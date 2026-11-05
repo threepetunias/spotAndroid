@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Spot's database goes into Google's device backup, matching iCloud on iPhone. Cache files are excluded. -->
+    <include domain="database" path="spot.db" />
+    <exclude domain="database" path="spot.db-wal" />
+    <exclude domain="database" path="spot.db-shm" />
+    <exclude domain="sharedpref" path="." />
+</full-backup-content>
