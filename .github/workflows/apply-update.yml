@@ -1,0 +1,28 @@
+name: Apply update
+# Upload a zip named update.zip (or something ending in -update.zip) to the main page of the repository.
+# This unpacks it into the repository and removes the zip. You can also run it by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['*update.zip']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - name: Unpack the zip
+        run: |
+          shopt -s nullglob
+          zips=(*update.zip)
+          if [ ${#zips[@]} -eq 0 ]; then echo "No update zip found in the main folder of the repository"; exit 0; fi
+          for z in "${zips[@]}"; do unzip -o "$z" -x '.github/*'; rm "$z"; done
+      - name: Save the changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Apply update" || echo "Nothing to commit"
+          git push
