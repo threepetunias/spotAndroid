@@ -103,7 +103,7 @@ fun LoadPastScreen(weId: Long?) {
         if (tagsSeen.isNotEmpty()) {
             Column(Modifier.padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Caption("Last time with a tag")
-                ChipRows(tagsSeen.map { (id, n) -> { m: Modifier -> Chip(n, tagId == id, { tagId = if (tagId == id) null else id }, m) } })
+                ChipRows(tagsSeen.map { (id, n) -> chipItem(n, tagId == id, { tagId = if (tagId == id) null else id }) })
             }
         }
         if (list.isNotEmpty()) {
@@ -252,8 +252,8 @@ fun TagPickerScreen(kind: String?, targetId: Long?) {
             Field("Name", newName, { newName = it }, max = Limits.TAG, placeholder = "For example: shoulder, tired, short on time")
             Spacer(Modifier.height(12.dp))
             ChipRows(listOf(
-                { m -> Chip("Health", newKind == "health", { newKind = "health" }, m) },
-                { m -> Chip("General", newKind == "general", { newKind = "general" }, m) },
+                chipItem("Health", newKind == "health", { newKind = "health" }),
+                chipItem("General", newKind == "general", { newKind = "general" }),
             ))
             Row(Modifier.padding(top = 12.dp).fillMaxWidth()) {
                 BigBtn("Add tag", {
@@ -317,8 +317,8 @@ fun TagsScreen() {
             Field("Name", name, { name = it }, max = Limits.TAG)
             Spacer(Modifier.height(12.dp))
             ChipRows(listOf(
-                { m -> Chip("Health", kind == "health", { kind = "health" }, m) },
-                { m -> Chip("General", kind == "general", { kind = "general" }, m) },
+                chipItem("Health", kind == "health", { kind = "health" }),
+                chipItem("General", kind == "general", { kind = "general" }),
             ))
             Row(Modifier.padding(top = 12.dp).fillMaxWidth()) {
                 BigBtn("Add tag", {
@@ -436,19 +436,19 @@ fun ExerciseEditScreen(idParam: String?) {
         Field("Gym", gym, { gym = it }, max = Limits.GYM, placeholder = "Riverside Gym (optional)")
         if (gyms.isNotEmpty()) {
             Column(Modifier.padding(top = 10.dp)) {
-                ChipRows(gyms.take(6).map { g -> { m: Modifier -> Chip(g, gym == g, { gym = g }, m) } })
+                ChipRows(gyms.take(6).map { g -> chipItem(g, gym == g, { gym = g }) })
             }
         }
         Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Units")
             ChipRows(listOf(
-                { m -> Chip("lb", unit == "lb", { unit = "lb" }, m) },
-                { m -> Chip("kg", unit == "kg", { unit = "kg" }, m) },
+                chipItem("lb", unit == "lb", { unit = "lb" }),
+                chipItem("kg", unit == "kg", { unit = "kg" }),
             ))
         }
         Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Weight step")
-            ChipRows(listOf(1.0, 2.5, 5.0).map { s -> { m: Modifier -> Chip("${num(s)} $unit", step == s, { step = s }, m) } })
+            ChipRows(listOf(1.0, 2.5, 5.0).map { s -> chipItem("${num(s)} $unit", step == s, { step = s }) })
         }
         if (id != null) {
             Row(Modifier.padding(top = 28.dp, bottom = 24.dp).fillMaxWidth()) {

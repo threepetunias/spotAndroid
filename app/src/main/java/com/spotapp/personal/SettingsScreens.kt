@@ -110,16 +110,16 @@ fun LookScreen() {
         Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Theme")
             ChipRows(listOf(
-                { m -> Chip("Paper", s["theme"] == "paper", { app.setSetting("theme", "paper") }, m) },
-                { m -> Chip("Evening", s["theme"] == "evening", { app.setSetting("theme", "evening") }, m) },
-                { m -> Chip("Match phone", s["theme"] == "system", { app.setSetting("theme", "system") }, m) },
+                chipItem("Paper", s["theme"] == "paper", { app.setSetting("theme", "paper") }),
+                chipItem("Evening", s["theme"] == "evening", { app.setSetting("theme", "evening") }),
+                chipItem("Match phone", s["theme"] == "system", { app.setSetting("theme", "system") }),
             ))
         }
         Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Color")
             ChipRows(listOf(
-                { m -> Chip("Lagoon", s["palette"] == "lagoon", { app.setSetting("palette", "lagoon") }, m) },
-                { m -> Chip("Citrus", s["palette"] == "citrus", { app.setSetting("palette", "citrus") }, m) },
+                chipItem("Lagoon", s["palette"] == "lagoon", { app.setSetting("palette", "lagoon") }),
+                chipItem("Citrus", s["palette"] == "citrus", { app.setSetting("palette", "citrus") }),
             ))
         }
         Column(
@@ -152,8 +152,8 @@ fun WorkoutSettingsScreen() {
         Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Default units")
             ChipRows(listOf(
-                { m -> Chip("lb", s["unit"] == "lb", { app.setSetting("unit", "lb") }, m) },
-                { m -> Chip("kg", s["unit"] == "kg", { app.setSetting("unit", "kg") }, m) },
+                chipItem("lb", s["unit"] == "lb", { app.setSetting("unit", "lb") }),
+                chipItem("kg", s["unit"] == "kg", { app.setSetting("unit", "kg") }),
             ))
             Text(
                 "Used for new exercises. Each exercise keeps its own unit, which you can change on the exercise.",
@@ -304,8 +304,8 @@ fun TendScreen() {
         Column(Modifier.padding(top = 22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Caption("Link to Tend")
             ChipRows(listOf(
-                { m -> Chip("Off", !on, { app.setSetting("tend", "0") }, m) },
-                { m -> Chip("On", on, { app.setSetting("tend", "1") }, m) },
+                chipItem("Off", !on, { app.setSetting("tend", "0") }),
+                chipItem("On", on, { app.setSetting("tend", "1") }),
             ))
         }
         if (on) {

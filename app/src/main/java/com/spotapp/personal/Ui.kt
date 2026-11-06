@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -153,6 +154,8 @@ fun Chip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifi
 }
 
 // Chip rows never hold more than three, so nothing is cut off at the screen edge.
+fun chipItem(label: String, selected: Boolean, onClick: () -> Unit): @Composable (Modifier) -> Unit = { m -> Chip(label, selected, onClick, m) }
+
 @Composable
 fun ChipRows(items: List<@Composable (Modifier) -> Unit>, perRow: Int = 3) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -186,7 +189,7 @@ fun BigBtn(label: String, onClick: () -> Unit, modifier: Modifier = Modifier, se
 
 // Cancel and Save sit in a bar pinned to the bottom of every sheet or form.
 @Composable
-fun PinnedBar(content: @Composable () -> Unit) {
+fun PinnedBar(content: @Composable RowScope.() -> Unit) {
     Row(
         Modifier.fillMaxWidth().background(colors().bg).navigationBarsPadding().padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),

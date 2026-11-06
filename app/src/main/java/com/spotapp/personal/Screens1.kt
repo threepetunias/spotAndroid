@@ -131,14 +131,14 @@ fun WelcomeScreen() {
         Para("Log weights, sets and reps. Spot remembers where you left off, so you never copy last week's notes again.")
         Heading("Color")
         ChipRows(listOf(
-            { m -> Chip("Lagoon", s["palette"] == "lagoon", { app.setSetting("palette", "lagoon") }, m) },
-            { m -> Chip("Citrus", s["palette"] == "citrus", { app.setSetting("palette", "citrus") }, m) },
+            chipItem("Lagoon", s["palette"] == "lagoon", { app.setSetting("palette", "lagoon") }),
+            chipItem("Citrus", s["palette"] == "citrus", { app.setSetting("palette", "citrus") }),
         ))
         Heading("Light or dark")
         ChipRows(listOf(
-            { m -> Chip("Paper", s["theme"] == "paper", { app.setSetting("theme", "paper") }, m) },
-            { m -> Chip("Evening", s["theme"] == "evening", { app.setSetting("theme", "evening") }, m) },
-            { m -> Chip("Match phone", s["theme"] == "system", { app.setSetting("theme", "system") }, m) },
+            chipItem("Paper", s["theme"] == "paper", { app.setSetting("theme", "paper") }),
+            chipItem("Evening", s["theme"] == "evening", { app.setSetting("theme", "evening") }),
+            chipItem("Match phone", s["theme"] == "system", { app.setSetting("theme", "system") }),
         ))
         Heading("Good to know", 18)
         Para(
@@ -255,7 +255,7 @@ fun NewWorkoutScreen() {
             Caption("Day · ${prettyDay(day)}")
             ChipRows(
                 listOf("Today" to 0, "Tomorrow" to 1, "In 2 days" to 2, "In a week" to 7).map { (label, n) ->
-                    { m: Modifier -> Chip(label, offset == n, { offset = n }, m) }
+                    chipItem(label, offset == n, { offset = n })
                 },
             )
         }
