@@ -1,11 +1,11 @@
+# Build output, local settings and anything secret. Keys are never stored in this repo.
 .gradle/
 build/
+app/build/
 local.properties
 *.jks
 *.keystore
-*.p12
-*.p8
-.env
-.env.*
+*.aab
+*.apk
 .idea/
-captures/
+.DS_Store

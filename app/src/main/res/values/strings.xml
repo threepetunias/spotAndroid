@@ -1,3 +1,9 @@
 <resources>
     <string name="app_name">Spot</string>
+    <string name="icon_a_label">Spot</string>
+    <string name="widget_today_desc">Today\'s workout</string>
+    <string name="widget_week_desc">Days trained this week and weeks in a row</string>
+    <string name="widget_record_desc">Your newest record</string>
+    <string name="widget_fun_desc">The weight you lifted, as something you can picture</string>
+    <string name="widget_action_desc">Add a workout, or go back to the one in progress</string>
 </resources>

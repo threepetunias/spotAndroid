@@ -1,3 +1,8 @@
 <resources>
+    <!-- ic_launcher_* and the adaptive icon files are from the first Android version; kept only so an upload over the old project still builds. Not used. -->
     <color name="ic_launcher_background">#0F5E5C</color>
+    <color name="window_bg">#0F5E5C</color>
+    <color name="widget_bg">#F4F1EA</color>
+    <color name="widget_ink">#1B1B18</color>
+    <color name="widget_muted">#5C5A52</color>
 </resources>
