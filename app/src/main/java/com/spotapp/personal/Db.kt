@@ -58,7 +58,7 @@ class Q(val db: SQLiteDatabase) {
         db.rawQueryWithFactory({ _, driver, editTable, query ->
             bindAll(query, args)
             SQLiteCursor(driver, editTable, query)
-        }, sql, null, null)
+        }, sql, null, "")
 
     fun exec(sql: String, vararg args: Any?) {
         db.compileStatement(sql).use { s -> bindAll(s, args); s.executeUpdateDelete() }

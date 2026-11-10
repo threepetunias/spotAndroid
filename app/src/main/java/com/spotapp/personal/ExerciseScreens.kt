@@ -389,7 +389,7 @@ fun PickIconScreen(current: String) {
                         Text("${list.size}", color = c.muted, fontSize = 15.sp)
                         Box(Modifier.rotate(if (on) 90f else -90f)) { SpotIcon("back", c.muted, 18.dp) }
                     }
-                    if (on) Box(Modifier.padding(horizontal = 4.dp, bottom = 8.dp)) { TileRows4(list) { i, m -> cell(i, m) } }
+                    if (on) Box(Modifier.padding(start = 4.dp, end = 4.dp, bottom = 8.dp)) { TileRows4(list) { i, m -> cell(i, m) } }
                 }
             }
         }

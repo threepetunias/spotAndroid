@@ -47,3 +47,10 @@ Done in the cloud workspace:
 - Names and resource references in the new files were checked against the project by a script.
 
 NOT done: no Gradle build, no Compose compile, no run on a phone, no TalkBack, large-text or small-screen check, no widget or notification seen. Your GitHub build is the first real compile and will likely show a few small errors to fix. The release test script (project store requirements, section 8) still has to be run on an internal test track.
+
+## Compile fixes after the first GitHub build (9 Nov 2026, 23:10)
+The first Gradle build reported three compile errors; all fixed:
+- Db.kt: `rawQueryWithFactory` needs a non-null table name; now passes an empty one (the cursor is read-only).
+- ExerciseScreens.kt: `Modifier.padding(horizontal =, bottom =)` is not a valid mix; now start, end and bottom.
+- SettingsHomePages.kt: removed an import for `matchParentSize` (it is a Box member and needs no import).
+Whether more errors follow in later compile stages is not known until the next build.
