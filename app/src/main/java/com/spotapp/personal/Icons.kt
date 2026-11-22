@@ -194,6 +194,20 @@ object Pictures {
         }
         return scored.sortedWith(compareBy({ it.second }, { it.third })).map { it.first }
     }
+
+    // The best picture for a new exercise name, or "" when nothing fits. The whole name first, then each word from longest to shortest.
+    fun guess(name: String): String {
+        val text = name.trim().lowercase()
+        if (text.length < 3 || all.isEmpty()) return ""
+        val whole = search(text)
+        if (whole.isNotEmpty() && whole.size < all.size) return whole[0].id
+        val words = text.split(Regex("[^a-z0-9]+")).filter { it.length >= 4 }.distinct().sortedByDescending { it.length }
+        for (w in words) {
+            val hit = search(w)
+            if (hit.isNotEmpty() && hit.size < all.size) return hit[0].id
+        }
+        return ""
+    }
 }
 
 private fun DrawScope.glyph(s: List<Path>, f: List<Path>, color: Color) {
@@ -225,6 +239,12 @@ private val PLACE_DEFS: Map<String, Def> = mapOf(
 )
 private val FEET = Def(listOf("M8 4 Q7 11 8 15 Q9 17 8 20 L14 20 Q16 19 15 16 L14 12 Q15 7 12 4 Z"))
 private val LUNGS = Def(listOf("M12 4 L12 12", "M12 8 Q7 8 5 13 Q4 18 8 19 Q11 19 11 15", "M12 8 Q17 8 19 13 Q20 18 16 19 Q13 19 13 15"))
+private val HEART = Def(listOf("M12 20 C4 14 3 9 6 6.5 C8.5 4.5 11 6 12 8 C13 6 15.5 4.5 18 6.5 C21 9 20 14 12 20 Z"))
+private val MOBILITY = Def(
+    listOf("M12 8 L12 14", "M12 14 L8 20", "M12 14 L16 20", "M5 11 Q12 6 19 11", "M17 8.4 L19 11 L16 11.6"),
+    listOf(dotPath(12f, 4.6f, 1.7f)),
+)
+private val POWER = Def(listOf("M13 3 L6 13.5 L11 13.5 L10 21 L18 10 L13 10 Z"))
 private val BP_ICON_ID = mapOf(
     "arms" to "bp_arms", "shoulders" to "bp_shoulders", "back" to "bp_back", "chest" to "bp_chest", "core" to "bp_abs", "legs" to "bp_legs", "glutes" to "bp_glutes",
 )
@@ -272,7 +292,7 @@ private fun BodyGlyphBox(part: String, size: Dp, color: Color) {
     val pic = BP_ICON_ID[part]?.let { Pictures.byId(it) }
     if (pic != null) GlyphBox(size, pic.sPaths, pic.fPaths, color)
     else {
-        val d = if (part == "feet") FEET else LUNGS
+        val d = when (part) { "feet" -> FEET; "heart" -> HEART; "mobility" -> MOBILITY; "power" -> POWER; else -> LUNGS }
         GlyphBox(size, d.sP, d.fP, color)
     }
 }

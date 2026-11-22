@@ -1,5 +1,6 @@
 package com.spotapp.personal
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,12 @@ fun WorkoutScreen(wid: Long) {
     var menu by remember(wid) { mutableStateOf<String?>(null) }
     var hist by remember(wid) { mutableStateOf("last") }
     var dragging by remember(wid) { mutableStateOf(false) }
+
+    // Back inside a workout: close the open menu, then go from an exercise to the list, and only then leave the workout.
+    val isTop = LocalIsTop.current
+    BackHandler(enabled = isTop && (menu != null || mode == "exercise")) {
+        if (menu != null) menu = null else { sel = null; mode = "list" }
+    }
 
     val w = (state as? Load.Ready)?.value
     val items = w?.items ?: emptyList()
@@ -107,17 +114,19 @@ fun WorkoutScreen(wid: Long) {
         if (item == null) return
         if (curSet == null) { app.write({ addSet(item.id) }) { sel = it }; return }
         if (!curSet.done) {
-            val setId = curSet.id; val weight = curSet.weight; val exId = item.exercise.id; val weId = item.id
-            val lastPlanned = sets.all { it.id == setId || it.done }
+            val setId = curSet.id; val weight = curSet.weight; val exId = item.exercise.id
+            // The first set logged on an exercise that is lower in the list moves it up, to just after the last finished one.
+            val firstLogged = sets.none { it.done } && item.status == "todo"
+            val target = if (firstLogged) moveUpTarget(items.map { it.status }, safeIdx) else null
+            val order = if (target != null) moveItem(items.map { it.id }, safeIdx, target) else null
             app.write({
                 val record = isNewRecord(exId, weight, setId)
                 setSetDone(setId, true)
-                // That was the last planned set: start the next one right away (Add set is still there too).
-                var next: Long? = null
-                if (lastPlanned) next = try { addSet(weId) } catch (e: InputError) { null }
-                LogResult(record, next)
+                if (order != null) reorderWorkoutExercises(wid, order)
+                LogResult(record, null)
             }) { r ->
-                sel = r.newSetId
+                sel = null
+                if (target != null) idx = target
                 if (r.record) celebrate = "${item.exercise.name}: ${num(weight)} ${item.exercise.unit}"
             }
             return
@@ -127,19 +136,11 @@ fun WorkoutScreen(wid: Long) {
         app.write({ setWeStatus(item.id, "done") }) { mode = "list" }
     }
 
-    fun bumpWeight(sign: Int) {
+    fun bump(f: FieldDef, sign: Int) {
         if (curSet == null) return
-        val step = app.settings["weightStep"]?.toDoubleOrNull()?.takeIf { it > 0 } ?: 1.0
-        val next = Math.min(Limits.MAX_WEIGHT, Math.max(0.0, Math.round((curSet.weight + sign * step) * 100) / 100.0))
+        val next = bumped(numberOf(curSet.nums, f.key), f.step, f.max, sign)
         val id = curSet.id
-        app.write({ updateSetWeight(id, next) })
-    }
-
-    fun bumpReps(sign: Int) {
-        if (curSet == null) return
-        val next = Math.min(Limits.MAX_REPS.toInt(), Math.max(0, curSet.reps + sign))
-        val id = curSet.id
-        app.write({ updateSetReps(id, next) })
+        app.write({ updateSetNumber(id, f.key, next) })
     }
 
     fun finishExercise() {
@@ -223,23 +224,33 @@ fun WorkoutScreen(wid: Long) {
     }
 
     val ex = item.exercise
-    val unit = ex.unit
     val placeId = item.locationId
     val placeName = ex.machines.firstOrNull { it.locationId == placeId }?.locationName ?: w.locationName
     val showPlaces = needsPlace(ex.equipment) && ex.machines.isNotEmpty()
     val allTags = w.tags + item.tags
-    val primaryLabel = if (curSet == null) "Add a set" else if (!curSet.done) "Log set $curNo" else if (editingDone) "Done editing" else "Done with this exercise"
+    val word = rowWord(ex.tracks)
+    val fields = fieldsFor(ex.tracks, ex.otherLabel, ex.unit, app.settings["weightStep"]?.toDoubleOrNull() ?: 1.0)
+    val primaryLabel = if (curSet == null) "Add a $word" else if (!curSet.done) "Log $word $curNo" else if (editingDone) "Done editing" else "Done with this exercise"
+    val showDoneButton = sets.any { it.done } && !allDone
 
     ScreenFrame(
         w.title, help = "logging", cog = true,
         bottom = {
             PinnedBar {
                 CircleBtn("list", "Back to the list of exercises", { sel = null; mode = "list" }, size = 56.dp, iconSize = 24.dp)
-                Box(
-                    Modifier.weight(1f).heightIn(min = 60.dp).clip(RoundedCornerShape(30.dp)).background(c.accent)
-                        .clickable(role = Role.Button, onClickLabel = primaryLabel) { onPrimary() },
-                    contentAlignment = Alignment.Center,
-                ) { Text(primaryLabel, color = c.onAccent, fontSize = 19.sp, fontWeight = FontWeight.Bold) }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        Modifier.fillMaxWidth().heightIn(min = 60.dp).clip(RoundedCornerShape(30.dp)).background(c.accent)
+                            .clickable(role = Role.Button, onClickLabel = primaryLabel) { onPrimary() },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(primaryLabel, color = c.onAccent, fontSize = 19.sp, fontWeight = FontWeight.Bold) }
+                    // The way out of an exercise is always in the same place, right under the main button.
+                    if (showDoneButton) Box(
+                        Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.chip)
+                            .clickable(role = Role.Button, onClickLabel = "Done with this exercise") { finishExercise() },
+                        contentAlignment = Alignment.Center,
+                    ) { Text("Done with this exercise", color = c.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+                }
             }
         },
         pad = 24.dp,
@@ -262,20 +273,9 @@ fun WorkoutScreen(wid: Long) {
                     }
                 }
             }
-            SetList(sets, curSet?.id, unit, { sel = it }) { app.write({ addSet(item.id) }) { sel = it } }
+            SetList(sets, curSet?.id, ex, { sel = it }) { app.write({ addSet(item.id) }) { sel = it } }
             if (curSet != null) {
-                SetEditor(
-                    curSet, unit, app.settings["weightStep"]?.toDoubleOrNull() ?: 1.0, ::bumpWeight, ::bumpReps,
-                    { n -> val id = curSet.id; app.write({ updateSetWeight(id, n) }) },
-                    { n -> val id = curSet.id; app.write({ updateSetReps(id, n.toInt()) }) },
-                )
-            }
-            if (sets.any { it.done } && !allDone) {
-                Box(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.chip)
-                        .clickable(role = Role.Button, onClickLabel = "Done with this exercise") { finishExercise() },
-                    contentAlignment = Alignment.Center,
-                ) { Text("Done with this exercise", color = c.ink, fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+                SetEditor(curSet, fields, ::bump) { f, n -> val id = curSet.id; app.write({ updateSetNumber(id, f.key, n) }) }
             }
             if (showPlaces) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -285,7 +285,7 @@ fun WorkoutScreen(wid: Long) {
                     })
                 }
             }
-            PastPanel(past, placeId, hist, { hist = it }, unit, { weId -> app.write({ loadSession(item.id, weId) }) }, { app.go(Route.LoadPast(item.id)) })
+            PastPanel(past, placeId, hist, { hist = it }, ex, { weId -> app.write({ loadSession(item.id, weId) }) }, { app.go(Route.LoadPast(item.id)) })
             Column(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.cue)
                     .clickable(role = Role.Button, onClickLabel = "Edit cues") { app.go(Route.ExerciseEdit(ex.id)) }
@@ -311,7 +311,7 @@ fun WorkoutScreen(wid: Long) {
     if (menu == "exercise") SpotSheet(ex.name, { menu = null }) {
         SheetRow("machine", "Edit exercise and cues") { menu = null; app.go(Route.ExerciseEdit(ex.id)) }
         SheetRow("tag", "Tag this exercise") { menu = null; app.go(Route.TagPicker(null, item.id)) }
-        if (curSet != null && sets.size > 1) SheetRow("minus", "Remove set $curNo") {
+        if (curSet != null && sets.size > 1) SheetRow("minus", "Remove $word $curNo") {
             menu = null
             val id = curSet.id
             app.write({ deleteSet(id) }) { sel = null }

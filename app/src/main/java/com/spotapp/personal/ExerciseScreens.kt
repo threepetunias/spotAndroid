@@ -205,6 +205,12 @@ fun ExerciseEditScreen(id: Long?) {
     var tagIds by remember(id) { mutableStateOf<List<Long>>(emptyList()) }
     var cues by remember(id) { mutableStateOf<List<String>>(emptyList()) }
     var link by remember(id) { mutableStateOf("") }
+    var tracks by remember(id) { mutableStateOf(listOf("weight", "reps")) }
+    var startMode by remember(id) { mutableStateOf("") }
+    var otherLabel by remember(id) { mutableStateOf("") }
+    // The picture is guessed from the name until the person picks one herself.
+    var pictureChosen by remember(id) { mutableStateOf(!isNew) }
+    var guessed by remember(id) { mutableStateOf(false) }
     var archived by remember(id) { mutableStateOf(false) }
     var box by remember(id) { mutableStateOf<String?>(null) }
     var addingPlace by remember(id) { mutableStateOf(false) }
@@ -220,6 +226,7 @@ fun ExerciseEditScreen(id: Long?) {
             if (e != null) {
                 name = e.name; icon = e.icon; equipment = e.equipment; movement = e.movement; cues = e.cues; archived = e.archived
                 bodyParts = e.bodyParts; tagIds = e.exTagIds; link = e.link; placeIds = e.machines.map { it.locationId }
+                tracks = e.tracks; startMode = e.startMode; otherLabel = e.otherLabel; pictureChosen = true
             }
             loaded = true
         }
@@ -229,9 +236,27 @@ fun ExerciseEditScreen(id: Long?) {
     fun save() {
         val input = Store.ExerciseInput(
             id, name, icon, equipment, if (showMove) movement else "", placeIds.map { it to "" }, cues.filter { it.trim().isNotEmpty() }, link, bodyParts, tagIds,
+            tracks, startMode, if ("other" in tracks) otherLabel else "",
         )
         app.write({ saveExercise(input) }) { app.back() }
     }
+
+    fun changeName(v: String) {
+        name = v
+        if (pictureChosen) return
+        val g = Pictures.guess(v)
+        icon = g
+        guessed = g.isNotEmpty()
+    }
+    fun changeEquipment(v: String) {
+        equipment = v
+        tracks = defaultTracks(v)
+    }
+    fun toggleTrack(t: String) {
+        tracks = if (t !in tracks) TRACKS.filter { it == t || it in tracks } else if (tracks.size > 1) tracks - t else tracks // always at least one
+    }
+    val trackChoice = hasTrackChoice(equipment)
+    val tracksText = tracks.joinToString(", ") { if (it == "other" && otherLabel.isNotBlank()) otherLabel.trim() else TRACK_LABELS[it] ?: it }
 
     val locations = d?.locations ?: emptyList()
     val exTags = d?.exTags ?: emptyList()
@@ -250,10 +275,13 @@ fun ExerciseEditScreen(id: Long?) {
         floating = { SettingsHomeHere(raised = true) },
     ) {
         if (loaded && d != null) Column(Modifier.padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Field("Name", name, { name = it }, max = Limits.NAME, placeholder = "Exercise name")
-            IconPickerField("Picture", icon) { icon = it }
+            Field("Name", name, { changeName(it) }, max = Limits.NAME, placeholder = "Exercise name")
+            IconPickerField("Picture", icon) { icon = it; pictureChosen = true; guessed = false }
+            if (guessed) Text("Picked from the name. Tap the picture to choose a different one.", color = c.muted, fontSize = 14.sp)
             Box(Modifier.size(6.dp))
             PickRow("Equipment", if (equipment.isEmpty()) "" else EQUIPMENT_LABELS[equipment] ?: "", "Not set", { box = "equipment" })
+            if (trackChoice) PickRow("What to log", tracksText, "Not set", { box = "tracks" })
+            PickRow("Starting sets", START_MODE_LABELS[startMode] ?: "", "Follow Settings", { box = "start" })
             PickRow("Body parts", bodyParts.joinToString(", ") { BODY_PART_LABELS[it] ?: it }, "Not set", { box = "body" })
             if (showMove) PickRow("Push or pull", if (movement.isEmpty()) "" else MOVEMENT_LABELS[movement] ?: "", "Not set", { box = "movement" })
             if (needsPlace(equipment)) PickRow("Places", placeNames.joinToString(", "), "Choose every place you do it", { box = "places" })
@@ -284,7 +312,16 @@ fun ExerciseEditScreen(id: Long?) {
     when (box) {
         "equipment" -> PickerBox("Equipment", { box = null }) {
             ChoiceChips(EQUIPMENT.filter { it.isNotEmpty() }.mapIndexed { n, e -> Option((n + 1).toLong(), EQUIPMENT_LABELS[e] ?: e) },
-                EQUIPMENT.indexOf(equipment).takeIf { it > 0 }?.toLong(), { v -> equipment = if (v == null) "" else EQUIPMENT[v.toInt()] }, clearable = true)
+                EQUIPMENT.indexOf(equipment).takeIf { it > 0 }?.toLong(), { v -> changeEquipment(if (v == null) "" else EQUIPMENT[v.toInt()]) }, clearable = true)
+        }
+        "tracks" -> PickerBox("What to log", { box = null }, hint = "Choose what you write down for this exercise. Weight and sets and reps are the usual choice for strength. Cardio usually logs time and distance.") {
+            MultiChips(TRACKS.mapIndexed { n, t -> Option((n + 1).toLong(), TRACK_LABELS[t] ?: t) }, tracks.map { (TRACKS.indexOf(it) + 1).toLong() }, { v -> toggleTrack(TRACKS[v.toInt() - 1]) })
+            if ("other" in tracks) Box(Modifier.padding(top = 10.dp)) { Field("Name for Other (optional)", otherLabel, { otherLabel = it }, max = Limits.OTHER_LABEL, placeholder = "Laps, Calories...") }
+        }
+        "start" -> PickerBox("Starting sets", { box = null }, hint = "How many sets (or rounds) a workout starts with for this exercise. Follow Settings uses the choice in Settings, Units and buttons.") {
+            val modes = START_MODES.filter { it.isNotEmpty() }
+            ChoiceChips(modes.mapIndexed { n, m -> Option((n + 1).toLong(), START_MODE_LABELS[m] ?: m) }, modes.indexOf(startMode).takeIf { it >= 0 }?.let { (it + 1).toLong() },
+                { v -> startMode = if (v == null) "" else modes[v.toInt() - 1] }, clearable = true)
         }
         "body" -> PickerBox("Body parts", { box = null }, hint = "Choose every part this exercise works.") {
             TileRows(BODY_PARTS) { b, m ->

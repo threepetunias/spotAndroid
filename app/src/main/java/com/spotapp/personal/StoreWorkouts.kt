@@ -30,21 +30,39 @@ private fun Store.makeTitle(day: String, locationId: Long?, selfId: Long?): Stri
     return if (count > 1) "$base · $count" else base
 }
 
+private const val SET_NUMS = "weight, reps, intensity, incline, minutes, distance, other"
+
+private fun numsOf(c: android.database.Cursor, from: Int = 0) = SetNums(
+    weight = c.dbl(from), reps = c.getInt(from + 1), intensity = c.dbl(from + 2), incline = c.dbl(from + 3),
+    minutes = c.dbl(from + 4), distance = c.dbl(from + 5), other = c.dbl(from + 6),
+)
+
+private fun Store.insertSet(weId: Long, position: Int, n: SetNums) {
+    q.exec(
+        "INSERT INTO sets (we_id, position, weight, reps, intensity, incline, minutes, distance, other, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        weId, position, n.weight, n.reps, n.intensity, n.incline, n.minutes, n.distance, n.other,
+    )
+}
+
+// The sets a new exercise starts with: its own Starting sets choice, else the one in Settings (see planSets).
 private fun Store.seedSets(weId: Long, exerciseId: Long) {
-    // Start from the most recent logged session of this exercise; else three plain sets.
+    val ex = q.first("SELECT equipment, tracks, start_mode FROM exercises WHERE id = ?", exerciseId) { Triple(it.str(0), it.str(1), it.str(2)) }
+    val settings = getSettings()
+    val own = ex?.third?.takeIf { it == "last" || it == "default" || it == "one" }
+    val global = settings["startSets"]?.takeIf { it == "default" || it == "one" } ?: "last"
+    val mode = own ?: global
+    val defaultCount = (settings["defaultSets"]?.toIntOrNull() ?: 4).coerceIn(1, Limits.MAX_SETS)
+    val countsSets = ex == null || "reps" in exerciseTracks(ex.first, ex.second)
+    // Start from the most recent logged session of this exercise.
     val last = q.first(
         """SELECT e.id FROM workout_exercises e JOIN workouts w ON w.id = e.workout_id
            WHERE e.exercise_id = ? AND e.id <> ? AND EXISTS (SELECT 1 FROM sets s WHERE s.we_id = e.id AND s.done = 1)
            ORDER BY w.day DESC, e.id DESC LIMIT 1""",
         exerciseId, weId,
     ) { it.long(0) }
-    if (last != null) {
-        val rows = q.map("SELECT weight, reps FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", last) { it.dbl(0) to it.getInt(1) }
-        var p = 0
-        for ((w, r) in rows) q.exec("INSERT INTO sets (we_id, position, weight, reps, done) VALUES (?, ?, ?, ?, 0)", weId, p++, w, r)
-        return
-    }
-    for (p in 0 until 3) q.exec("INSERT INTO sets (we_id, position, weight, reps, done) VALUES (?, ?, 0, 10, 0)", weId, p)
+    val previous = if (last != null) q.map("SELECT $SET_NUMS FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", last) { numsOf(it) } else emptyList()
+    var p = 0
+    for (n in planSets(mode, previous, defaultCount, countsSets)) insertSet(weId, p++, n)
 }
 
 private fun Store.addExercisesTx(workoutId: Long, exerciseIds: List<Long>) {
@@ -96,13 +114,22 @@ fun Store.getWorkout(id: Long): WorkoutFull? {
         listOf(it.long(0), it.getInt(1), it.str(2), it.str(3), it.long(4), it.longOrNull(5))
     }
     val items = ArrayList<WeFull>()
-    for (r in weRows) {
+    // The exercises and the sets are read in a few queries for the whole workout, not a handful per exercise.
+    val exes = exercisesAt(weRows.map { (it[4] as Long) to ((it[5] as Long?) ?: wLoc) })
+    val setsByWe = HashMap<Long, MutableList<SetRow>>()
+    q.map(
+        """SELECT s.we_id, s.id, s.position, s.done, s.weight, s.reps, s.intensity, s.incline, s.minutes, s.distance, s.other
+           FROM sets s JOIN workout_exercises e ON e.id = s.we_id WHERE e.workout_id = ? ORDER BY s.position, s.id""",
+        wid,
+    ) {
+        val n = numsOf(it, 4)
+        setsByWe.getOrPut(it.long(0)) { ArrayList() }.add(SetRow(it.long(1), it.getInt(2), n.weight, n.reps, it.getInt(3) == 1, n))
+    }
+    for ((i, r) in weRows.withIndex()) {
         val weId = r[0] as Long
         val effLoc = (r[5] as Long?) ?: wLoc
-        val ex = getExercise(r[4] as Long, effLoc) ?: continue
-        val sets = q.map("SELECT id, position, weight, reps, done FROM sets WHERE we_id = ? ORDER BY position, id", weId) {
-            SetRow(it.long(0), it.getInt(1), it.dbl(2), it.getInt(3), it.getInt(4) == 1)
-        }
+        val ex = exes[i] ?: continue
+        val sets = setsByWe[weId] ?: emptyList<SetRow>()
         val status = when (r[2] as String) { "done" -> "done"; "skipped" -> "skipped"; else -> "todo" }
         items.add(WeFull(weId, r[1] as Int, status, r[3] as String, ex, sets, getLinks(TagTarget.OfItem(weId), paths), effLoc))
     }
@@ -180,42 +207,38 @@ fun Store.removeWe(weId: Long) {
 fun Store.addSet(weId: Long): Long {
     val id = cleanInt(weId, "Item", 1, 1_000_000_000)
     if (q.count("SELECT COUNT(*) FROM sets WHERE we_id = ?", id) >= Limits.MAX_SETS) throw InputError("At most ${Limits.MAX_SETS} sets.")
-    val last = q.first("SELECT weight, reps, position FROM sets WHERE we_id = ? ORDER BY position DESC, id DESC LIMIT 1", id) {
-        Triple(it.dbl(0), it.getInt(1), it.getInt(2))
-    }
+    val last = q.first("SELECT $SET_NUMS, position FROM sets WHERE we_id = ? ORDER BY position DESC, id DESC LIMIT 1", id) { numsOf(it) to it.getInt(7) }
+    val n = last?.first ?: BLANK_SET
     return q.insert(
-        "INSERT INTO sets (we_id, position, weight, reps, done) VALUES (?, ?, ?, ?, 0)",
-        id, if (last != null) last.third + 1 else 0, last?.first ?: 0.0, last?.second ?: 10,
+        "INSERT INTO sets (we_id, position, weight, reps, intensity, incline, minutes, distance, other, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+        id, if (last != null) last.second + 1 else 0, n.weight, n.reps, n.intensity, n.incline, n.minutes, n.distance, n.other,
     )
 }
 
-fun Store.updateSetWeight(setId: Long, weight: Double) {
-    val sid = cleanInt(setId, "Set", 1, 1_000_000_000)
-    val w = cleanNum(weight, "Weight", 0.0, Limits.MAX_WEIGHT)
-    // The weight is held: later sets of this exercise that are not done yet and had the same old weight follow it.
-    q.tx {
-        val cur = q.first("SELECT we_id, position, weight FROM sets WHERE id = ?", sid) { Triple(it.long(0), it.getInt(1), it.dbl(2)) }
-        q.exec("UPDATE sets SET weight = ? WHERE id = ?", w, sid)
-        if (cur != null && cur.third != w) {
-            q.exec(
-                "UPDATE sets SET weight = ? WHERE we_id = ? AND done = 0 AND weight = ? AND id <> ? AND (position > ? OR (position = ? AND id > ?))",
-                w, cur.first, cur.third, sid, cur.second, cur.second, sid,
-            )
-        }
-    }
-}
+// Which number, and its limit, for each thing that can be written down. The column names are fixed here, never taken from input.
+private class NumField(val key: String, val col: String, val label: String, val max: Double, val whole: Boolean)
+private val NUM_FIELDS = listOf(
+    NumField("weight", "weight", "Weight", Limits.MAX_WEIGHT, false),
+    NumField("reps", "reps", "Reps", Limits.MAX_REPS.toDouble(), true),
+    NumField("intensity", "intensity", "Intensity", Limits.MAX_INTENSITY, false),
+    NumField("incline", "incline", "Incline", Limits.MAX_INCLINE, false),
+    NumField("minutes", "minutes", "Time", Limits.MAX_MINUTES, false),
+    NumField("distance", "distance", "Distance", Limits.MAX_DISTANCE, false),
+    NumField("other", "other", "Other", Limits.MAX_OTHER, false),
+)
 
-fun Store.updateSetReps(setId: Long, reps: Int) {
+// Writes one number of a set. The number is held: later sets of this exercise that are not done yet and had the same old number follow it.
+fun Store.updateSetNumber(setId: Long, key: String, value: Double) {
     val sid = cleanInt(setId, "Set", 1, 1_000_000_000)
-    val r = cleanInt(reps, "Reps", 0, Limits.MAX_REPS).toInt()
-    // Reps are held like weight: later sets of this exercise that are not done yet and had the same old reps follow it.
+    val f = NUM_FIELDS.firstOrNull { it.key == key } ?: throw InputError("That is not something Spot writes down.")
+    val v = if (f.whole) cleanInt(Math.round(value), f.label, 0, f.max.toLong()).toDouble() else cleanNum(value, f.label, 0.0, f.max)
     q.tx {
-        val cur = q.first("SELECT we_id, position, reps FROM sets WHERE id = ?", sid) { Triple(it.long(0), it.getInt(1), it.getInt(2)) }
-        q.exec("UPDATE sets SET reps = ? WHERE id = ?", r, sid)
-        if (cur != null && cur.third != r) {
+        val cur = q.first("SELECT we_id, position, ${f.col} FROM sets WHERE id = ?", sid) { Triple(it.long(0), it.getInt(1), it.dbl(2)) }
+        q.exec("UPDATE sets SET ${f.col} = ? WHERE id = ?", v, sid)
+        if (cur != null && cur.third != v) {
             q.exec(
-                "UPDATE sets SET reps = ? WHERE we_id = ? AND done = 0 AND reps = ? AND id <> ? AND (position > ? OR (position = ? AND id > ?))",
-                r, cur.first, cur.third, sid, cur.second, cur.second, sid,
+                "UPDATE sets SET ${f.col} = ? WHERE we_id = ? AND done = 0 AND ${f.col} = ? AND id <> ? AND (position > ? OR (position = ? AND id > ?))",
+                v, cur.first, cur.third, sid, cur.second, cur.second, sid,
             )
         }
     }

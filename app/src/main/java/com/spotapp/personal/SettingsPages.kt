@@ -186,6 +186,20 @@ fun WorkoutsPage() {
             ChipRows { for (v in listOf("0.5", "1", "2.5", "5", "10")) Chip("$v $unit", app.settings["weightStep"] == v, { app.setSetting("weightStep", v) }) }
             Text("How far the plus and minus buttons move the weight on a set. You can still type any number.", color = c.muted, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 6.dp))
         }
+        Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caption("Number of sets")
+            ChipRows { for (v in SETTING_VALUES.getValue("defaultSets")) Chip(v, app.settings["defaultSets"] == v, { app.setSetting("defaultSets", v) }) }
+            Text("How many sets a new exercise starts with in a workout. You can add or remove sets at any time. Cardio exercises call them rounds.", color = c.muted, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 6.dp))
+        }
+        Column(Modifier.padding(top = 24.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Caption("Starting sets")
+            ChipRows {
+                Chip("Same as last time", app.settings["startSets"] == "last", { app.setSetting("startSets", "last") })
+                Chip("Number of sets above", app.settings["startSets"] == "default", { app.setSetting("startSets", "default") })
+                Chip("Just 1 set", app.settings["startSets"] == "one", { app.setSetting("startSets", "one") })
+            }
+            Text("Same as last time starts with the number of sets you did last time (and fills in those numbers). Just 1 set starts with the first set of last time. You can set this differently for any one exercise when you edit it.", color = c.muted, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 6.dp))
+        }
     }
 }
 

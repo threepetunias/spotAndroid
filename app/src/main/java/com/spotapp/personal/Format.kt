@@ -20,11 +20,29 @@ fun summarize(sets: List<SetLite>, unit: String = ""): String {
     return if (unit.isNotEmpty()) "$body $unit" else body
 }
 
+// A whole session in one line, whatever the exercise writes down.
+fun describeSets(sets: List<SetLite>, tracks: List<String>, otherLabel: String, unit: String): String {
+    if (sets.isEmpty()) return "No sets"
+    if ("weight" in tracks && "reps" in tracks && tracks.size == 2) return summarize(sets, unit)
+    return sets.joinToString(" · ") { setLine(it.nums, tracks, otherLabel, unit) }
+}
+
 fun tagLabel(t: TagLink): String = if (t.severity != null) "${t.name} ${t.severity}/5" else t.name
 
 fun hasHealthTag(s: Session): Boolean = s.tags.any { it.kind == "health" }
 fun topWeight(s: Session): Double = s.sets.maxOfOrNull { it.weight } ?: 0.0
 fun totalReps(s: Session): Int = s.sets.sumOf { it.reps }
+// Used to pick the best session when there is no weight to compare: the most time, then the most distance.
+fun totalMinutes(s: Session): Double = s.sets.sumOf { it.nums.minutes }
+fun totalDistance(s: Session): Double = s.sets.sumOf { it.nums.distance }
+
+// True when session x beats session y: heavier, then more reps, then more time, then more distance.
+fun betterSession(x: Session, y: Session): Boolean = when {
+    topWeight(x) != topWeight(y) -> topWeight(x) > topWeight(y)
+    totalReps(x) != totalReps(y) -> totalReps(x) > totalReps(y)
+    totalMinutes(x) != totalMinutes(y) -> totalMinutes(x) > totalMinutes(y)
+    else -> totalDistance(x) > totalDistance(y)
+}
 
 data class QuickPick(val key: String, val label: String, val session: Session)
 
@@ -41,7 +59,7 @@ fun quickPicks(sessions: List<Session>, tagId: Long?): List<QuickPick> {
     var best: Session? = null
     for (s in sessions) {
         val b = best
-        if (b == null || topWeight(s) > topWeight(b) || (topWeight(s) == topWeight(b) && totalReps(s) > totalReps(b))) best = s
+        if (b == null || betterSession(s, b)) best = s
     }
     if (best != null) out.add(QuickPick("best", "Best", best))
     return out

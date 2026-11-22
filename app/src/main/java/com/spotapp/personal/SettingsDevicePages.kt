@@ -145,7 +145,7 @@ fun PhonePage() {
             Text("If it does not appear, check that notifications are allowed for Spot in the Android settings.", color = c.muted, fontSize = 16.sp, lineHeight = 23.sp)
             Text("Latest answer: ${PhoneSync.status}.", color = c.muted, fontSize = 16.sp, lineHeight = 23.sp)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BigBtn("Check again", { PhoneSync.update(app) }, secondary = true)
+                BigBtn("Check again", { PhoneSync.update(app, force = true) }, secondary = true)
                 if (!Notice.allowed(ctx)) BigBtn("Notification settings", {
                     try {
                         ctx.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

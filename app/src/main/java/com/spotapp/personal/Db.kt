@@ -9,9 +9,9 @@ import android.database.sqlite.SQLiteProgram
 
 // Storage. Every query uses bound parameters (?). No SQL is built by joining user text.
 // Placeholder lists are built only from a count of ids that were already checked as numbers.
-// The tables match the iPhone app's data model version 5, so a backup file moves between the phones.
+// The tables match the iPhone app's data model version 6, so a backup file moves between the phones.
 
-const val DB_VERSION = 5
+const val DB_VERSION = 6
 
 private fun bindAll(p: SQLiteProgram, args: Array<out Any?>) {
     for ((i, a) in args.withIndex()) {
@@ -44,7 +44,20 @@ class SpotDb(context: Context) : SQLiteOpenHelper(context.applicationContext, "s
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Version 5 is the first version of this app. Future steps go here, for example: if (oldVersion < 6) { ... }
+        // Version 5 is the first version of this app. Each later version is one numbered step; an old step is never edited.
+        if (oldVersion < 6) {
+            db.execSQL("ALTER TABLE exercises ADD COLUMN start_mode TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE exercises ADD COLUMN tracks TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE exercises ADD COLUMN other_label TEXT NOT NULL DEFAULT ''")
+            for (col in listOf("intensity", "incline", "minutes", "distance", "other")) {
+                db.execSQL("ALTER TABLE sets ADD COLUMN $col REAL NOT NULL DEFAULT 0")
+            }
+            // A cardio machine exercise that already has sets logged keeps writing down weight and reps, so nothing already logged is hidden.
+            db.execSQL(
+                "UPDATE exercises SET tracks = 'weight,reps' WHERE equipment = 'cardio' AND id IN " +
+                    "(SELECT e.exercise_id FROM workout_exercises e JOIN sets s ON s.we_id = e.id)",
+            )
+        }
     }
 
     override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -115,7 +128,10 @@ private val SCHEMA = listOf(
         icon TEXT NOT NULL DEFAULT '',
         equipment TEXT NOT NULL DEFAULT '',
         movement TEXT NOT NULL DEFAULT '',
-        link TEXT NOT NULL DEFAULT ''
+        link TEXT NOT NULL DEFAULT '',
+        start_mode TEXT NOT NULL DEFAULT '',
+        tracks TEXT NOT NULL DEFAULT '',
+        other_label TEXT NOT NULL DEFAULT ''
     )""",
     """CREATE TABLE exercise_locations (
         exercise_id INTEGER NOT NULL REFERENCES exercises(id) ON DELETE CASCADE,
@@ -147,7 +163,12 @@ private val SCHEMA = listOf(
         position INTEGER NOT NULL,
         weight REAL NOT NULL DEFAULT 0,
         reps INTEGER NOT NULL DEFAULT 0,
-        done INTEGER NOT NULL DEFAULT 0
+        done INTEGER NOT NULL DEFAULT 0,
+        intensity REAL NOT NULL DEFAULT 0,
+        incline REAL NOT NULL DEFAULT 0,
+        minutes REAL NOT NULL DEFAULT 0,
+        distance REAL NOT NULL DEFAULT 0,
+        other REAL NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

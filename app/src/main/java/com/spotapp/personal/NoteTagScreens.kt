@@ -39,10 +39,10 @@ fun LoadPastScreen(weId: Long) {
     val app = LocalApp.current
     val c = colors()
     var tagId by remember(weId) { mutableStateOf<Long?>(null) }
-    class Data(val name: String, val unit: String, val sessions: List<Session>)
+    class Data(val name: String, val unit: String, val tracks: List<String>, val otherLabel: String, val sessions: List<Session>)
     val state = load("loadPast", weId) {
         val info = getWeInfo(weId)
-        if (info == null) null else Data(info.exercise.name, info.exercise.unit, pastSessions(info.exercise.id, weId))
+        if (info == null) null else Data(info.exercise.name, info.exercise.unit, info.exercise.tracks, info.exercise.otherLabel, pastSessions(info.exercise.id, weId))
     }
 
     ScreenFrame("Load past") {
@@ -58,15 +58,15 @@ fun LoadPastScreen(weId: Long) {
                 Column(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(c.card)
                         .clickable(role = Role.Button, onClickLabel = "Load this session") {
-                            app.ask("Load this session?", "${summarize(s.sets, d.unit)} from ${prettyDay(s.day)} will replace the sets you have not logged yet.", "Load") {
+                            app.ask("Load this session?", "${describeSets(s.sets, d.tracks, d.otherLabel, d.unit)} from ${prettyDay(s.day)} will replace the sets you have not logged yet.", "Load") {
                                 app.write({ loadSession(weId, s.weId) }) { app.back() }
                             }
                         }
-                        .semantics { contentDescription = "$label. ${summarize(s.sets, d.unit)}, ${prettyDay(s.day)}. Tap to load." }.padding(16.dp),
+                        .semantics { contentDescription = "$label. ${describeSets(s.sets, d.tracks, d.otherLabel, d.unit)}, ${prettyDay(s.day)}. Tap to load." }.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(label, color = c.accentText, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    Text(summarize(s.sets, d.unit), color = c.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(describeSets(s.sets, d.tracks, d.otherLabel, d.unit), color = c.ink, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Text(prettyDay(s.day) + " · " + s.workoutTitle + (if (s.tags.isNotEmpty()) " · " + s.tags.joinToString(", ") { tagLabel(it) } else ""), color = c.muted, fontSize = 15.sp)
                 }
             }

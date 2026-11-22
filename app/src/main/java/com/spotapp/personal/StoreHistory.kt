@@ -16,7 +16,10 @@ fun Store.pastSessions(exerciseId: Long, excludeWeId: Long): List<Session> {
     return rows.map { r ->
         val weId = r[0] as Long
         val wid = r[1] as Long
-        val sets = q.map("SELECT weight, reps FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", weId) { SetLite(it.dbl(0), it.getInt(1)) }
+        val sets = q.map("SELECT weight, reps, intensity, incline, minutes, distance, other FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", weId) {
+            val n = SetNums(it.dbl(0), it.getInt(1), it.dbl(2), it.dbl(3), it.dbl(4), it.dbl(5), it.dbl(6))
+            SetLite(n.weight, n.reps, n)
+        }
         val tags = getLinks(TagTarget.OfWorkout(wid), paths) + getLinks(TagTarget.OfItem(weId), paths)
         Session(weId, wid, r[2] as String, r[3] as String, sets, tags, r[4] as Long?, r[5] as String)
     }
@@ -27,11 +30,18 @@ fun Store.loadSession(weId: Long, fromWeId: Long) {
     val to = cleanInt(weId, "Item", 1, 1_000_000_000)
     val from = cleanInt(fromWeId, "Item", 1, 1_000_000_000)
     q.tx {
-        val src = q.map("SELECT weight, reps FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", from) { it.dbl(0) to it.getInt(1) }
+        val src = q.map("SELECT weight, reps, intensity, incline, minutes, distance, other FROM sets WHERE we_id = ? AND done = 1 ORDER BY position, id", from) {
+            SetNums(it.dbl(0), it.getInt(1), it.dbl(2), it.dbl(3), it.dbl(4), it.dbl(5), it.dbl(6))
+        }
         if (src.isEmpty()) throw InputError("That session has no logged sets.")
         q.exec("DELETE FROM sets WHERE we_id = ? AND done = 0", to)
         var p = (q.first("SELECT MAX(position) FROM sets WHERE we_id = ?", to) { if (it.isNull(0)) -1 else it.getInt(0) } ?: -1) + 1
-        for ((w, r) in src) q.exec("INSERT INTO sets (we_id, position, weight, reps, done) VALUES (?, ?, ?, ?, 0)", to, p++, w, r)
+        for (n in src) {
+            q.exec(
+                "INSERT INTO sets (we_id, position, weight, reps, intensity, incline, minutes, distance, other, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
+                to, p++, n.weight, n.reps, n.intensity, n.incline, n.minutes, n.distance, n.other,
+            )
+        }
     }
 }
 

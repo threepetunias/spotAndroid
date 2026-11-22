@@ -3,7 +3,11 @@ package com.spotapp.personal
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -139,7 +143,7 @@ fun MountainRange(records: List<RecordRow>, colorBy: String, top: Float, bottom:
         val width = size.width; val height = size.height
         val shown = records.sortedWith(sortHeavy).take(9)
         val max = maxOf(1.0, shown.maxOfOrNull { it.weight } ?: 1.0)
-        val ground = height - bottom + 30f * density
+        val ground = height - bottom
         val areaH = ground - top - 30f * density
         val ordered = ArrayList<RecordRow>()
         shown.forEachIndexed { i, r -> if (i % 2 == 0) ordered.add(r) else ordered.add(0, r) }
@@ -190,7 +194,7 @@ fun Skyline(records: List<RecordRow>, colorBy: String, top: Float, bottom: Float
         val d = density
         val shown = records.sortedWith(sortHeavy).take(10)
         val max = maxOf(1.0, shown.maxOfOrNull { it.weight } ?: 1.0)
-        val ground = height - bottom + 40f * d
+        val ground = height - bottom
         val areaH = ground - top - 40f * d
         val n = maxOf(1, shown.size)
         val bw = minOf(70f * d, (width - 24f * d) / n - 6f * d)
@@ -218,31 +222,96 @@ fun Skyline(records: List<RecordRow>, colorBy: String, top: Float, bottom: Float
 
 // ---------- ghost race ----------
 
+// A little ghost, drawn in a 24 by 26 box. Its eyes use the background color so it works on any theme.
+private fun ghostPath(): Path = Path().apply {
+    moveTo(0f, 12f)
+    arcTo(androidx.compose.ui.geometry.Rect(0f, 0f, 24f, 24f), 180f, 180f, false)
+    lineTo(24f, 26f); lineTo(20f, 22f); lineTo(16f, 26f); lineTo(12f, 22f); lineTo(8f, 26f); lineTo(4f, 22f); lineTo(0f, 26f)
+    close()
+}
+private val GHOST = ghostPath()
+
+private fun DrawScope.ghost(x: Float, y: Float, size: Float, fill: Color, eye: Color, faint: Boolean) {
+    val k = size / 26f
+    withTransform({ translate(x - 12f * k, y - 14f * k); scale(k, k, Offset.Zero) }) {
+        if (faint) {
+            drawPath(GHOST, fill.copy(alpha = 0.4f), style = Stroke(2f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 3f))))
+            drawCircle(fill.copy(alpha = 0.4f), 2.4f, Offset(8f, 11f))
+            drawCircle(fill.copy(alpha = 0.4f), 2.4f, Offset(16f, 11f))
+        } else {
+            drawPath(GHOST, fill)
+            drawCircle(eye, 2.4f, Offset(8f, 11f))
+            drawCircle(eye, 2.4f, Offset(16f, 11f))
+        }
+    }
+}
+
 @Composable
 fun GhostRace(now: Map<String, Double>, before: Map<String, Double>, top: Float, bottom: Float, periodWord: String, modifier: Modifier) {
     val c = colors()
+    val app = LocalApp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tm = rememberTextMeasurer()
     val cols = BODY_PARTS.associateWith { bodyColor(it) }
     val lanes = BODY_PARTS.filter { (now[it] ?: 0.0) > 0 || (before[it] ?: 0.0) > 0 }
         .sortedByDescending { maxOf(now[it] ?: 0.0, before[it] ?: 0.0) }.take(5)
-    SceneCanvas("Ghost race: this $periodWord against the one before, for ${lanes.size} body parts.", {}, modifier) { tm, _ ->
+    val unit = app.settings["unit"] ?: "lb"
+    var picked by remember { mutableStateOf<String?>(null) }
+    val laneKey = lanes.joinToString("|") { "$it:${now[it]}:${before[it]}" }
+    // The ghosts run to their place once when the scene appears or the numbers change. With animations turned off in the phone's settings they are simply there.
+    val progress = remember { androidx.compose.animation.core.Animatable(0f) }
+    androidx.compose.runtime.LaunchedEffect(laneKey) {
+        val scale = try { android.provider.Settings.Global.getFloat(context.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) } catch (e: Exception) { 1f }
+        if (scale == 0f) progress.snapTo(1f)
+        else {
+            progress.snapTo(0f)
+            progress.animateTo(1f, androidx.compose.animation.core.tween(1100, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        }
+    }
+    val t = progress.value
+    var laneHeight by remember { mutableStateOf(0f) }
+    var laneTop by remember { mutableStateOf(0f) }
+    Canvas(
+        modifier.semantics { contentDescription = "Ghost race: this $periodWord against the one before, for ${lanes.size} body parts. Tap a lane for the numbers." }
+            .pointerInput(laneKey) {
+                detectTapGestures { p ->
+                    if (laneHeight > 0f && p.y >= laneTop && p.y < laneTop + laneHeight * lanes.size) {
+                        val b = lanes[((p.y - laneTop) / laneHeight).toInt().coerceIn(0, lanes.size - 1)]
+                        picked = if (picked == b) null else b
+                    }
+                }
+            },
+    ) {
         val width = size.width; val height = size.height; val d = density
         val area = height - top - bottom
         val gap = if (lanes.isNotEmpty()) area / lanes.size else area
-        val left = 70f * d; val right = width - 28f * d
+        laneHeight = gap; laneTop = top
+        val left = 78f * d; val right = width - 40f * d
+        val gsize = maxOf(22f * d, minOf(32f * d, gap - 12f * d))
         drawRect(c.bg, size = Size(width, height))
         lanes.forEachIndexed { i, b ->
             val y = top + gap * (i + 0.5f)
             val nv = now[b] ?: 0.0; val bv = before[b] ?: 0.0
             val m = maxOf(nv, bv, 1.0)
-            val xNow = (left + (right - left) * nv / m).toFloat()
-            val xBefore = (left + (right - left) * bv / m).toFloat()
+            val xNow = (left + (right - left) * nv * t / m).toFloat()
+            val xBefore = (left + (right - left) * bv * t / m).toFloat()
             val col = cols.getValue(b)
+            if (picked == b) drawRoundRect(c.chip, Offset(6f * d, y - gap / 2 + 2f * d), Size(width - 12f * d, gap - 4f * d), androidx.compose.ui.geometry.CornerRadius(12f * d))
             label(tm, BODY_PART_LABELS[b] ?: b, 14f * d, y + 4f * d, 13f, c.ink, FontWeight.ExtraBold)
-            drawLine(c.edge, Offset(left, y), Offset(right, y), 2f * d, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f * d, 6f * d)))
-            drawCircle(col, 14f * d, Offset(xBefore, y), style = Stroke(2.5f * d, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f * d, 4f * d))))
-            drawCircle(col, 12f * d, Offset(xNow, y))
+            drawLine(c.edge, Offset(left, y + gsize / 2), Offset(right + 14f * d, y + gsize / 2), 2f * d, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f * d, 6f * d)))
+            ghost(xBefore, y, gsize, col, c.bg, faint = true)
+            ghost(xNow, y, gsize, col, c.bg, faint = false)
         }
         if (lanes.isEmpty()) label(tm, "Log a few workouts to start the race", width / 2, height / 2, 16f, c.muted, FontWeight.Normal, true)
-        label(tm, "Solid dot: this $periodWord. Dashed ring: the one before.", width / 2, height - bottom + 28f * d, 13f, c.muted, FontWeight.Normal, true)
+        // The key sits under the lanes, clear of the buttons at the bottom.
+        val keyY = height - bottom + 14f * d
+        ghost(26f * d, keyY + 4f * d, 22f * d, c.ink, c.bg, faint = false)
+        label(tm, "This $periodWord", 44f * d, keyY + 9f * d, 13f, c.muted, FontWeight.Normal)
+        ghost(width / 2 + 6f * d, keyY + 4f * d, 22f * d, c.ink, c.bg, faint = true)
+        label(tm, "The one before", width / 2 + 24f * d, keyY + 9f * d, 13f, c.muted, FontWeight.Normal)
+        val pk = picked
+        val line = if (pk != null && pk in lanes) "${BODY_PART_LABELS[pk] ?: pk}: ${num(Math.round(now[pk] ?: 0.0).toDouble())} $unit now, ${num(Math.round(before[pk] ?: 0.0).toDouble())} $unit before"
+            else if (lanes.isNotEmpty()) "Tap a lane to see the numbers." else ""
+        label(tm, line, 20f * d, keyY + 34f * d, 14f, c.ink, FontWeight.Bold)
     }
 }

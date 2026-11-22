@@ -2,7 +2,7 @@ package com.spotapp.personal
 
 import java.time.Instant
 
-// Backup and restore. The file is the same shape the iPhone app makes (version 5), so it moves between phones.
+// Backup and restore. The file is the same shape the iPhone app makes (version 6), so it moves between phones.
 
 private fun Store.table(sql: String, vararg names: String): List<Map<String, Any?>> =
     q.map(sql) { c ->
@@ -25,8 +25,8 @@ fun Store.exportAll(): String {
         "locations" to table("SELECT id, name, icon, color FROM locations ORDER BY id", "id", "name", "icon", "color"),
         "workout_types" to table("SELECT id, name, icon FROM workout_types ORDER BY id", "id", "name", "icon"),
         "exercises" to table(
-            "SELECT id, name, icon, equipment, movement, cues, archived, link FROM exercises ORDER BY id",
-            "id", "name", "icon", "equipment", "movement", "cues", "archived", "link",
+            "SELECT id, name, icon, equipment, movement, cues, archived, link, start_mode, tracks, other_label FROM exercises ORDER BY id",
+            "id", "name", "icon", "equipment", "movement", "cues", "archived", "link", "start_mode", "tracks", "other_label",
         ),
         "exercise_body_parts" to table("SELECT exercise_id, part FROM exercise_body_parts ORDER BY exercise_id, part", "exercise_id", "part"),
         "ex_tags" to table("SELECT id, name FROM ex_tags ORDER BY id", "id", "name"),
@@ -43,7 +43,10 @@ fun Store.exportAll(): String {
             "SELECT id, workout_id, exercise_id, position, status, note, location_id FROM workout_exercises ORDER BY id",
             "id", "workout_id", "exercise_id", "position", "status", "note", "location_id",
         ),
-        "sets" to table("SELECT id, we_id, position, weight, reps, done FROM sets ORDER BY id", "id", "we_id", "position", "weight", "reps", "done"),
+        "sets" to table(
+            "SELECT id, we_id, position, weight, reps, intensity, incline, minutes, distance, other, done FROM sets ORDER BY id",
+            "id", "we_id", "position", "weight", "reps", "intensity", "incline", "minutes", "distance", "other", "done",
+        ),
         "tags" to table("SELECT id, name, kind, parent_id FROM tags ORDER BY id", "id", "name", "kind", "parent_id"),
         "tag_links" to table(
             "SELECT id, tag_id, workout_id, we_id, severity FROM tag_links ORDER BY id",
@@ -71,8 +74,8 @@ fun Store.importAll(text: String): Restored {
         for (t in d.types) q.exec("INSERT INTO workout_types (id, name, icon) VALUES (?, ?, ?)", t.id, t.name, t.icon)
         for (e in d.exercises) {
             q.exec(
-                "INSERT INTO exercises (id, name, icon, equipment, movement, cues, archived, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                e.id, e.name, e.icon, e.equipment, e.movement, e.cues, e.archived, e.link,
+                "INSERT INTO exercises (id, name, icon, equipment, movement, cues, archived, link, start_mode, tracks, other_label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                e.id, e.name, e.icon, e.equipment, e.movement, e.cues, e.archived, e.link, e.startMode, e.tracks, e.otherLabel,
             )
         }
         for (t in d.exTags) q.exec("INSERT INTO ex_tags (id, name) VALUES (?, ?)", t.id, t.name)
@@ -91,7 +94,12 @@ fun Store.importAll(text: String): Restored {
                 r.id, r.workoutId, r.exerciseId, r.position, r.status, r.note, r.locationId,
             )
         }
-        for (s in d.sets) q.exec("INSERT INTO sets (id, we_id, position, weight, reps, done) VALUES (?, ?, ?, ?, ?, ?)", s.id, s.weId, s.position, s.weight, s.reps, s.done)
+        for (s in d.sets) {
+            q.exec(
+                "INSERT INTO sets (id, we_id, position, weight, reps, intensity, incline, minutes, distance, other, done) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                s.id, s.weId, s.position, s.weight, s.reps, s.nums.intensity, s.nums.incline, s.nums.minutes, s.nums.distance, s.nums.other, s.done,
+            )
+        }
         // groups first so every parent exists before its children
         for (t in tagInsertOrder(d.tags)) q.exec("INSERT INTO tags (id, name, kind, parent_id) VALUES (?, ?, ?, ?)", t.id, t.name, t.kind, t.parentId)
         for (l in d.links) q.exec("INSERT INTO tag_links (id, tag_id, workout_id, we_id, severity) VALUES (?, ?, ?, ?, ?)", l.id, l.tagId, l.workoutId, l.weId, l.severity)

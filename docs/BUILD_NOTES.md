@@ -54,3 +54,31 @@ The first Gradle build reported three compile errors; all fixed:
 - ExerciseScreens.kt: `Modifier.padding(horizontal =, bottom =)` is not a valid mix; now start, end and bottom.
 - SettingsHomePages.kt: removed an import for `matchParentSize` (it is a Box member and needs no import).
 Whether more errors follow in later compile stages is not known until the next build.
+
+## Update 15 (22 Nov 2026)
+What changed (numbers match the "Spot update 15 - change checklist"):
+- 1, 2: exercise picture guessed from the name until one is chosen (`Pictures.guess`); new clearer elliptical picture.
+- 3, 5: Settings "Number of sets" (1-6, 8, 10; default 4) and "Starting sets" (last time / default / one); each exercise can override ("Starting sets" on the exercise page). Logic in `SetLogic.kt` (`planSets`).
+- 4: no extra set is added after you log the last one; "Add a set" / "Add a round" adds one on purpose.
+- 6: "Done with this exercise" is the second button in the bottom bar.
+- 7, 8, 9: "What to log" per exercise: weight, reps, time, distance, intensity, incline, other. New equipment "Cardio" (no machine). Cardio machine and Cardio start with time + distance; Other lets you choose and name what to log. Database version 6 (new columns, nothing dropped); backup version 6 (older backups still restore). Existing cardio-machine exercises that already have sets keep weight + reps.
+- 10: a finished workout on Home says "Completed workout" and can still be edited.
+- 11, 19: garden key under the muscle garden with a link to Settings colors; three new body parts: heart, mobility, power (12 in all).
+- 12, 13, 14: PR "ghost race" is animated (a ghost per lane runs to its place; Reduce Motion / animations off = no animation); tap a lane for numbers; key below; PR scene labels no longer hidden; the exercise card says what it shows.
+- 15: Back after "Settings home" leaves Settings (already how Android worked; unchanged).
+- 16: rest timer keeps running when you leave the screen. `RestTimer.kt` keeps the end time; an ongoing notification counts down by itself (chronometer, no per-second work); at the end Spot buzzes and the notification becomes "Rest is over". A backup alarm (`setAndAllowWhileIdle`, no exact-alarm permission, may be a little late) covers Spot being closed. `RestTimerReceiver` is not exported. Notification permission is explained and asked once.
+- 17: Back inside a workout goes menu -> exercise -> exercise list before leaving; Back on a tab that is not Home goes Home before leaving the app.
+- 18: starting a lower exercise moves it up to just after the last finished one (never moves down).
+- 20 (battery): see "Battery" below.
+
+Battery (investigation, not measured on a phone): likely causes were (a) widgets and notice redrawn after every save even when nothing changed, (b) the rest timer waking the screen 5 times a second, (c) a query per exercise when opening a workout. Fixed: widgets/snapshot only rewritten when the snapshot changed or every 15 minutes (Settings "Check again" forces it); timer screen ticks once a second and only while it is showing and running; workout loads exercises and sets in two queries. Android's own battery screen (Settings, Battery, Spot) will show whether it improved after a day or two of use.
+
+Security: new inputs (set numbers, tracks, start mode, other label) are validated against fixed lists and limits in `Store` and `BackupParse`; SQL uses bound parameters only; the new receiver is not exported and ignores anything when no rest is pending; no new permissions (POST_NOTIFICATIONS already declared; no exact-alarm or full-screen permission).
+
+Tested here: plain-Kotlin logic including the new `SetLogic.kt`: 210 checks, 0 failed (`KOTLINC=... bash tests/run.sh`).
+NOT tested: no Gradle build or Compose compile, nothing run on a phone. The first GitHub build is the real compile and may report a few small errors. VERIFY on the phone: rest-timer notification and alert (screen locked, app closed), Back button paths, ghost-race animation, picture guess, Cardio fields, move-up, widgets still update.
+Known limit: the ghost race uses weight x reps, so a body part trained only with cardio shows no lane.
+
+21 (added the same day): the workout exercise list no longer has a "Reorder" button. Each row with more than one exercise has a quiet "⋮⋮" handle on the right; press and hold it, then drag, as with the goals in Tend. TalkBack: "Move up" / "Move down" actions on the handle. Same on iPhone. The Home cards page uses the same list with its larger grip. Not compiled here (Compose); VERIFY on a phone that dragging still scrolls correctly and does not open the exercise.
+
+Late fix (22 Nov): the lock screen card, Android notification and widgets say "Round 2 of 2" instead of "Set 2 of 2" for exercises that do not write down reps (cardio). Test added (iPhone phonetest 30 checks; Android CoreTest 212 checks).

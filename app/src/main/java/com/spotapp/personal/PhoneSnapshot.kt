@@ -13,11 +13,12 @@ data class Snapshot(
     val streak: Int, val record: RecordInfo?, val fun_: FunInfo?,
 )
 
-class WorkoutLikeItem(val status: String, val exerciseName: String, val setsDone: List<Boolean>)
+// rounds = the exercise does not write down reps (most cardio), so its rows are called rounds, not sets.
+class WorkoutLikeItem(val status: String, val exerciseName: String, val setsDone: List<Boolean>, val rounds: Boolean = false)
 class WorkoutLike(val id: Long, val title: String, val done: Boolean, val locationName: String, val items: List<WorkoutLikeItem>)
 
 fun WorkoutFull.asLike(): WorkoutLike =
-    WorkoutLike(id, title, done, locationName, items.map { WorkoutLikeItem(it.status, it.exercise.name, it.sets.map { s -> s.done }) })
+    WorkoutLike(id, title, done, locationName, items.map { WorkoutLikeItem(it.status, it.exercise.name, it.sets.map { s -> s.done }, "reps" !in it.exercise.tracks) })
 
 private const val DEFAULT_DOT = "#0F5E5C"
 private val WEEK_LETTERS = listOf("M", "T", "W", "T", "F", "S", "S")
@@ -39,7 +40,7 @@ fun progressInfo(w: WorkoutLike?): ProgressInfo? {
     val planned = Math.max(cur.setsDone.size, 1)
     val upcoming = w.items.drop(at + 1).firstOrNull { it.status == "todo" }
     return ProgressInfo(
-        w.id, w.title, cur.exerciseName, "Set ${Math.min(logged + 1, planned)} of $planned",
+        w.id, w.title, cur.exerciseName, "${if (cur.rounds) "Round" else "Set"} ${Math.min(logged + 1, planned)} of $planned",
         upcoming?.exerciseName ?: "", doneEx, w.items.size,
     )
 }

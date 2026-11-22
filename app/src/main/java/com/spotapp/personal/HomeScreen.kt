@@ -50,6 +50,7 @@ fun HomeScreen() {
                     full.id, full.title, full.locationName, todays.placeIcon, todays.placeColor,
                     full.items.count { it.status == "done" }, full.items.size,
                     full.items.map { TodayItem(it.exercise.name, it.status == "done", it.exercise.icon, it.exercise.bodyParts) },
+                    finished = full.done,
                 )
             }
         }
@@ -82,7 +83,7 @@ fun HomeScreen() {
                 }
                 for (k in order.filter(on)) when (k) {
                     "today" -> TodayWidget(s["sToday"] ?: "button", d.today, { d.today?.let { app.go(Route.Workout(it.id)) } }, { app.go(Route.WorkoutNew) })
-                    "garden" -> GardenWidget(s["sGarden"] ?: "garden", d.garden, pGarden.key)
+                    "garden" -> GardenWidget(s["sGarden"] ?: "garden", d.garden, pGarden.key, onColors = { app.go(Route.Page("body-parts")) })
                     "balance" -> BalanceWidget(s["sBalance"] ?: "seesaw", d.push, d.pull, pBalance.key)
                     "week" -> WeekWidget(s["sWeek"] ?: "strip", d.days, d.streak, today)
                     "fun" -> FunWidget(s["sFun"] ?: "comparison", d.fn, unit, pFun.key)

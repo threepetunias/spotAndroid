@@ -2,15 +2,15 @@ package com.spotapp.personal
 
 // Reads and checks a backup file. Nothing here touches the database: the whole file is checked first,
 // and the store writes it only when every row passes. Bad input is rejected, never repaired.
-// Backup versions 1 to 5 are read (the same files the iPhone app makes), version 5 is written.
+// Backup versions 1 to 6 are read (the same files the iPhone app makes), version 6 is written.
 
-const val BACKUP_VERSION = 5
+const val BACKUP_VERSION = 6
 
 class BLocation(val id: Long, val name: String, val icon: String, val color: String)
 class BType(val id: Long, val name: String, val icon: String)
 class BExercise(
     val id: Long, val name: String, val icon: String, var equipment: String, val movement: String,
-    val cues: String, val archived: Int, val link: String,
+    val cues: String, val archived: Int, val link: String, val startMode: String = "", val tracks: String = "", val otherLabel: String = "",
 )
 class BExLoc(val exerciseId: Long, val locationId: Long, val machine: String)
 class BWorkout(
@@ -19,7 +19,7 @@ class BWorkout(
 class BWe(
     val id: Long, val workoutId: Long, val exerciseId: Long, val position: Int, val status: String, val note: String, val locationId: Long?,
 )
-class BSet(val id: Long, val weId: Long, val position: Int, val weight: Double, val reps: Int, val done: Int)
+class BSet(val id: Long, val weId: Long, val position: Int, val weight: Double, val reps: Int, val done: Int, val nums: SetNums = SetNums(weight = weight, reps = reps))
 class BTag(val id: Long, val name: String, val kind: String, var parentId: Long?)
 class BLink(val id: Long, val tagId: Long, val workoutId: Long?, val weId: Long?, val severity: Int?)
 class BPart(val exerciseId: Long, val part: String)
@@ -53,11 +53,12 @@ fun parseBackup(text: String): BackupData {
     val o = raw as Map<String, Any?>
     if (o["app"] != "spot") throw InputError("This is not a Spot backup file.")
     val version = (o["version"] as? Long)?.toInt()
-    if (version == null || version < 1 || version > 5) throw InputError("This backup was made by a different version of Spot.")
+    if (version == null || version < 1 || version > 6) throw InputError("This backup was made by a different version of Spot.")
     val old = version == 1
     val pre3 = version <= 2
     val pre4 = version < 4
     val pre5 = version < 5
+    val pre6 = version < 6
 
     val ex = rows(o["exercises"], "exercises", 5000).map { r ->
         val gym = if (old) cleanOptionalText(r["gym"], "Gym", Limits.GYM) else ""
@@ -72,6 +73,10 @@ fun parseBackup(text: String): BackupData {
                 cues = cleanOptionalText(r["cues"], "Cues", Limits.CUE * Limits.CUES + Limits.CUES, true),
                 archived = cleanInt(r["archived"], "Archived", 0, 1).toInt(),
                 link = if (pre5) "" else (r["link"] as? String)?.let { cleanLink(it) } ?: throw InputError("Link must be text."),
+                // What to write down and how sets start came in with version 6; older files keep the usual for each kind of equipment.
+                startMode = if (pre6) "" else cleanOneOf(r["start_mode"] ?: "", "Starting sets", START_MODES),
+                tracks = if (pre6) "" else cleanTracks(r["tracks"]),
+                otherLabel = if (pre6) "" else cleanOptionalText(r["other_label"], "Name for Other", Limits.OTHER_LABEL),
             ),
             gym, machine,
         )
@@ -114,6 +119,7 @@ fun parseBackup(text: String): BackupData {
         }
     }
     for (e in exercises) if (e.equipment == "" && e.movement != "") throw InputError("An exercise has push or pull set without equipment.")
+    for (e in exercises) if (e.tracks != "" && !hasTrackChoice(e.equipment)) throw InputError("Backup exercises are not valid.")
     if (pre3) {
         val withPlace = exLocs.map { it.exerciseId }.toSet()
         for (e in exercises) if (e.id in withPlace) e.equipment = "machine"
@@ -133,10 +139,19 @@ fun parseBackup(text: String): BackupData {
         )
     }
     val st = rows(o["sets"], "sets", 1000000).map { r ->
+        val weight = cleanNum(r["weight"], "Weight", 0.0, Limits.MAX_WEIGHT)
+        val reps = cleanInt(r["reps"], "Reps", 0, Limits.MAX_REPS).toInt()
+        val nums = SetNums(
+            weight, reps,
+            if (pre6) 0.0 else cleanNum(r["intensity"], "Intensity", 0.0, Limits.MAX_INTENSITY),
+            if (pre6) 0.0 else cleanNum(r["incline"], "Incline", 0.0, Limits.MAX_INCLINE),
+            if (pre6) 0.0 else cleanNum(r["minutes"], "Time", 0.0, Limits.MAX_MINUTES),
+            if (pre6) 0.0 else cleanNum(r["distance"], "Distance", 0.0, Limits.MAX_DISTANCE),
+            if (pre6) 0.0 else cleanNum(r["other"], "Other", 0.0, Limits.MAX_OTHER),
+        )
         BSet(
             id(r["id"], "Set id"), id(r["we_id"], "Item"), cleanInt(r["position"], "Position", 0, 100000).toInt(),
-            cleanNum(r["weight"], "Weight", 0.0, Limits.MAX_WEIGHT), cleanInt(r["reps"], "Reps", 0, Limits.MAX_REPS).toInt(),
-            cleanInt(r["done"], "Done", 0, 1).toInt(),
+            weight, reps, cleanInt(r["done"], "Done", 0, 1).toInt(), nums,
         )
     }
     val ebp = if (pre5) emptyList() else rows(o["exercise_body_parts"], "body parts", 100000).map { r ->
@@ -254,6 +269,16 @@ fun parseBackup(text: String): BackupData {
         }
     }
     return BackupData(loc, types, exercises, exLocs, wk, we, st, tg, tl, ebp, ext, exl, settings)
+}
+
+// A saved list of what to write down: known names only, each once, in the usual order. Anything else is rejected.
+fun cleanTracks(v: Any?): String {
+    val text = cleanOptionalText(v, "What to write down", 80)
+    if (text == "") return ""
+    val parts = text.split(",")
+    val known = parts.filter { it in TRACKS }
+    if (known.size != parts.size || known.toSet().size != known.size) throw InputError("Backup exercises are not valid.")
+    return TRACKS.filter { it in known }.joinToString(",")
 }
 
 fun cleanIcon(v: Any?): String {

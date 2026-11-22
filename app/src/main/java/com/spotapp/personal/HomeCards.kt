@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -76,7 +77,7 @@ val PERIOD_WORD = mapOf("week" to "this week", "month" to "this month", "year" t
 class TodayItem(val name: String, val done: Boolean, val icon: String, val parts: List<String>)
 class TodayData(
     val id: Long, val title: String, val place: String, val placeIcon: String, val placeColor: String,
-    val done: Int, val total: Int, val items: List<TodayItem>,
+    val done: Int, val total: Int, val items: List<TodayItem>, val finished: Boolean = false,
 )
 
 private fun hx(s: String) = hexColor(s)
@@ -115,7 +116,7 @@ fun TodayWidget(style: String, data: TodayData?, onOpen: () -> Unit, onNew: () -
         }
         return
     }
-    val sub = listOf(data.place, "${data.done} of ${data.total} done").filter { it.isNotEmpty() }.joinToString(" · ")
+    val sub = listOf(data.place, if (data.finished) "Completed · ${data.done} of ${data.total} done" else "${data.done} of ${data.total} done").filter { it.isNotEmpty() }.joinToString(" · ")
     if (style == "button") {
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(c.accent).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("TODAY", color = c.onAccent.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.8.sp)
@@ -123,9 +124,9 @@ fun TodayWidget(style: String, data: TodayData?, onOpen: () -> Unit, onNew: () -
             Text(sub, color = c.onAccent.copy(alpha = 0.85f), fontSize = 15.sp)
             Box(
                 Modifier.padding(top = 8.dp).fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(24.dp)).background(c.bg)
-                    .clickable(onClickLabel = "Continue ${data.title}", onClick = onOpen),
+                    .clickable(onClickLabel = if (data.finished) "Open completed workout" else "Continue ${data.title}", onClick = onOpen),
                 contentAlignment = Alignment.Center,
-            ) { Text(if (data.done > 0) "Continue workout" else "Start workout", color = c.accentText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) }
+            ) { Text(if (data.finished) "Completed workout" else if (data.done > 0) "Continue workout" else "Start workout", color = c.accentText, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold) }
         }
         return
     }
@@ -217,28 +218,50 @@ private fun GardenArt(sets: Map<String, Int>) {
             drawRect(Color(0xFF8C7357), Offset(0f, base + 4), Size(w, hgt - base))
             drawRect(Color(0xFF7A6247), Offset(0f, base + 4), Size(w, 7f))
             BODY_PARTS.forEachIndexed { i, b ->
-                val x = 34f + i * (w - 68f) / 8f
+                val x = 34f + i * (w - 68f) / (BODY_PARTS.size - 1)
                 plant(x, base, bloomLevel(sets[b] ?: 0), cols[i], Color(0xFF4F8A7B), Color(0xFF3B6B5F))
             }
             BODY_PARTS.forEachIndexed { i, b ->
-                val x = 34f + i * (w - 68f) / 8f
+                val x = 34f + i * (w - 68f) / (BODY_PARTS.size - 1)
                 drawCircle(if ((sets[b] ?: 0) > 0) cols[i] else Color(0xFFCFC6B3), 12f, Offset(x, base + 28))
             }
         }
     }
 }
 
+// What the colors mean, with a way to the Settings page where they are chosen. Shown under the garden on Home.
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun GardenWidget(style: String, sets: Map<String, Int>, period: String) {
+private fun GardenKey(onColors: () -> Unit) {
+    val c = colors()
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (b in BODY_PARTS) Row(
+                Modifier.clip(RoundedCornerShape(12.dp)).background(c.chip).padding(horizontal = 8.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(bodyColor(b)))
+                Text(BODY_PART_LABELS[b] ?: b, color = c.ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Box(Modifier.heightIn(min = 48.dp).clickable(onClickLabel = "Change body part colors in Settings", onClick = onColors), contentAlignment = Alignment.CenterStart) {
+            Text("Change these colors in Settings", color = c.accentText, fontSize = 15.sp, fontWeight = FontWeight.Bold, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+        }
+    }
+}
+
+@Composable
+fun GardenWidget(style: String, sets: Map<String, Int>, period: String, onColors: (() -> Unit)? = null) {
     val c = colors()
     val bloomCount = BODY_PARTS.count { (sets[it] ?: 0) > 0 }
-    val sentence = if (bloomCount == 0) "Nothing logged yet. Your first workout plants the first flower." else "$bloomCount of 9 in bloom. The others are resting."
+    val sentence = if (bloomCount == 0) "Nothing logged yet. Your first workout plants the first flower." else "$bloomCount of ${BODY_PARTS.size} in bloom. The others are resting."
     val head = "Muscle garden · ${PERIOD_WORD[period] ?: period}"
     if (style == "icons") {
         Titled(head) {
             CardBox(10) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    for (b in BODY_PARTS) Column(
+                // Six to a row, so twelve body parts fit on a narrow phone.
+                for (line in BODY_PARTS.chunked(6)) Row(Modifier.fillMaxWidth().padding(bottom = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    for (b in line) Column(
                         Modifier.weight(1f).semantics { contentDescription = "${BODY_PART_LABELS[b]}, ${sets[b] ?: 0} sets" },
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
@@ -248,9 +271,11 @@ fun GardenWidget(style: String, sets: Map<String, Int>, period: String) {
                             repeat(minOf(3, bloomLevel(sets[b] ?: 0))) { Box(Modifier.size(5.dp).clip(CircleShape).background(bodyColor(b))) }
                         }
                     }
+                    repeat(6 - line.size) { Spacer(Modifier.weight(1f)) }
                 }
                 Text(sentence, color = c.muted, fontSize = 14.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             }
+            if (onColors != null) GardenKey(onColors)
         }
         return
     }
@@ -267,11 +292,13 @@ fun GardenWidget(style: String, sets: Map<String, Int>, period: String) {
                     Text("${sets[b] ?: 0}", Modifier.width(28.dp), color = c.muted, fontSize = 12.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.End)
                 }
             }
+            if (onColors != null) GardenKey(onColors)
         }
         return
     }
     Titled(head) {
         Box(Modifier.clip(RoundedCornerShape(20.dp)).semantics { contentDescription = "Muscle garden. $sentence" }) { GardenArt(sets) }
+        if (onColors != null) GardenKey(onColors)
     }
 }
 
@@ -475,7 +502,7 @@ fun WeekWidget(style: String, days: List<TrainedDay>, streak: Int, today: String
 // ---------- samples for the previews in Settings ----------
 
 object Sample {
-    val sets: Map<String, Int> = mapOf("arms" to 6, "shoulders" to 0, "back" to 11, "chest" to 2, "core" to 3, "legs" to 7, "glutes" to 0, "feet" to 0, "lungs" to 0)
+    val sets: Map<String, Int> = mapOf("arms" to 6, "shoulders" to 0, "back" to 11, "chest" to 2, "core" to 3, "legs" to 7, "glutes" to 0, "feet" to 0, "lungs" to 0, "heart" to 0, "mobility" to 0, "power" to 0)
     val today = TodayData(0, "Leg and back", "Gym", "gym", "", 2, 5, listOf(
         TodayItem("Squat", true, "squat", listOf("legs")), TodayItem("Leg press", true, "leg_press", listOf("legs")),
         TodayItem("Lat pulldown", false, "lat_pulldown", listOf("back")),

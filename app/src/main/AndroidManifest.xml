@@ -4,7 +4,7 @@
     <!--
       Permissions Spot declares, and why (nothing else is requested):
       - VIBRATE: the rest timer buzzes when time is up.
-      - POST_NOTIFICATIONS: the "workout in progress" notice. Asked once, after the first logged set, and the app works without it.
+      - POST_NOTIFICATIONS: the "workout in progress" notice and the rest timer. The notice is asked once, after the first logged set, the timer once, when a rest is first started. Asked once, after the first logged set, and the app works without it.
       No network, storage, location, contacts, exact-alarm or full-screen permissions.
     -->
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -70,6 +70,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!-- The backup alarm for the rest timer. Not exported: only Spot can send it. -->
+        <receiver android:name=".RestTimerReceiver" android:exported="false" />
 
         <!-- Home screen widgets. Android itself sends the update message, so these are exported (required) and ignore anything else. -->
         <receiver android:name=".TodayWidgetProvider" android:exported="true" android:label="Today">

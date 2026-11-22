@@ -93,14 +93,18 @@ fun PrsScreen() {
     }
     val d = (state as? Load.Ready)?.value
     val rows = d?.rows ?: emptyList()
-    val chosen = rows.firstOrNull { it.exerciseId == sel } ?: rows.firstOrNull()
+    // With nothing tapped, the card shows the heaviest record, and says so.
+    val picked = rows.firstOrNull { it.exerciseId == sel }
+    val chosen = picked ?: rows.maxByOrNull { it.weight }
+    val thing = when (style) { "sky" -> "star"; "range" -> "peak"; else -> "building" }
     val list = style == "list"
     val ink = if (list) c.ink else if (style == "range" && !c.isDark) Color(0xFF16393B) else Color(0xFFF4F1EA)
     val dark = style != "range" && !list || c.isDark
     val density = LocalDensity.current.density
     val statusPx = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     val topPx = statusPx + 118f * density
-    val bottomPx = 150f * density
+    val bottomPx = 215f * density // room for the names under the scene and the card and button laid over the bottom
+    val ghostBottomPx = 150f * density
 
     @Composable
     fun controls() {
@@ -156,7 +160,7 @@ fun PrsScreen() {
                 "sky" -> NightSky(rows, colorBy, topPx, bottomPx, chosen?.exerciseId, pick, m)
                 "range" -> MountainRange(rows, colorBy, topPx, bottomPx, chosen?.exerciseId, pick, m)
                 "skyline" -> Skyline(rows, colorBy, topPx, bottomPx, chosen?.exerciseId, pick, m)
-                "ghost" -> GhostRace(d.now, d.before, topPx, bottomPx, if (period == Period.ALL) "period" else period.key, m)
+                "ghost" -> GhostRace(d.now, d.before, topPx, ghostBottomPx, if (period == Period.ALL) "period" else period.key, m)
             }
             Column(Modifier.statusBarsPadding().padding(start = 16.dp, end = 16.dp, top = 8.dp)) {
                 Box(Modifier.padding(bottom = 10.dp)) { topRow(if (style == "ghost") c.ink else ink) }
@@ -172,6 +176,10 @@ fun PrsScreen() {
                 Text("${chosen.name} · ${num(chosen.weight)} ${chosen.unit}", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
                     "${chosen.reps} ${if (chosen.reps == 1) "rep" else "reps"} · ${shortDay(chosen.day)}" + (if (chosen.locationName.isNotEmpty()) " · ${chosen.locationName}" else ""),
+                    color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp),
+                )
+                Text(
+                    if (picked != null) "Tap to open this exercise." else "Your heaviest. Tap a $thing to see another.",
                     color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, modifier = Modifier.padding(top = 2.dp),
                 )
             }

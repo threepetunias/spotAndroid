@@ -31,11 +31,19 @@ object PhoneSync {
 
     private var job: Job? = null
 
+    // The last snapshot written. When nothing changed, the widgets are not redrawn again (saves battery).
+    // A quiet refresh still happens every 15 minutes so the day and "today" stay right.
+    private var lastSnap: Snapshot? = null
+    private var lastAt = 0L
+    private const val QUIET_MS = 15 * 60 * 1000L
+
     // Set by the main screen: asks Android for permission to show the notice, the first time it is wanted.
     var requestPermission: (() -> Unit)? = null
 
     // Safe to call from anywhere, as often as you like: calls close together are folded into one run.
-    fun update(app: AppState) {
+    // force = true is for the Settings page, so "Check again" always redraws the widgets.
+    fun update(app: AppState, force: Boolean = false) {
+        if (force) lastSnap = null
         job?.cancel()
         job = app.scope.launch {
             delay(300)
@@ -75,8 +83,13 @@ object PhoneSync {
             )
         }
         val (snap, noticeOn, like) = data
-        PhoneStore.save(ctx, snap)
-        PhoneWidgets.refreshAll(ctx)
+        val now = System.currentTimeMillis()
+        if (snap != lastSnap || now - lastAt > QUIET_MS) {
+            PhoneStore.save(ctx, snap)
+            PhoneWidgets.refreshAll(ctx)
+            lastSnap = snap
+            lastAt = now
+        }
         val progress = snap.progress
         status = when {
             !noticeOn -> { Notice.cancel(ctx); "the notice is turned off above" }

@@ -1,10 +1,6 @@
 package com.spotapp.personal
 
-import android.content.Context
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import android.content.Intent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -303,52 +299,52 @@ private val PRESETS = listOf(30, 60, 90, 120)
 private fun clock(s: Int): String = "${s / 60}:${if (s % 60 < 10) "0" else ""}${s % 60}"
 private fun secLabel(s: Int): String = if (s < 120) "$s s" else "${s / 60} min"
 
-private fun buzz(context: Context) {
-    try {
-        val v: Vibrator? = if (Build.VERSION.SDK_INT >= 31) (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
-        else @Suppress("DEPRECATION") (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-        v?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 500, 250, 500, 250, 500), -1))
-    } catch (e: Exception) { /* no vibration on this phone */ }
-}
-
-private fun stopBuzz(context: Context) {
-    try {
-        val v: Vibrator? = if (Build.VERSION.SDK_INT >= 31) (context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)?.defaultVibrator
-        else @Suppress("DEPRECATION") (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-        v?.cancel()
-    } catch (e: Exception) { /* nothing to stop on this phone */ }
-}
-
-// Rest timer. It counts down from the end time (not by ticking), so it stays right if the screen is slow.
-// It vibrates and flashes when it finishes while the app is open. It does not send notifications.
+// Rest timer. The timer itself lives in RestTimer.kt, so it keeps running when you leave this screen.
+// When the rest ends it buzzes and flashes if Spot is open, and a notification tells you if Spot is in the background (when allowed).
 @Composable
 fun TimerScreen() {
+    val app = LocalApp.current
     val c = colors()
     val context = LocalContext.current
-    var total by remember { mutableStateOf(60) }
-    var endAt by remember { mutableStateOf<Long?>(null) }
-    var left by remember { mutableStateOf(60) }
-    var finished by remember { mutableStateOf(false) }
+    val total = RestTimer.total
+    val endAt = RestTimer.endAt
+    val finished = RestTimer.finished
+    val running = endAt != null
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
     var custom by remember { mutableStateOf("") }
     val flash = remember { Animatable(0f) }
+    val isTop = LocalIsTop.current
+    val notifOn = Notice.allowed(context)
 
-    LaunchedEffect(endAt) {
-        val end = endAt ?: return@LaunchedEffect
-        while (true) {
-            val r = Math.ceil((end - System.currentTimeMillis()) / 1000.0).toInt()
-            if (r <= 0) break
-            left = r
-            delay(200)
+    // Count the screen once a second, and only while it is showing and a rest is running.
+    LaunchedEffect(endAt, isTop) {
+        RestTimer.settle(context)
+        while (endAt != null && isTop) {
+            now = System.currentTimeMillis()
+            delay(1000L - now % 1000L)
         }
-        endAt = null; left = 0; finished = true
-        buzz(context)
-        repeat(6) { flash.animateTo(1f, tween(350)); flash.animateTo(0f, tween(350)) }
+        now = System.currentTimeMillis()
     }
-    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { stopBuzz(context) } }
+    // Flash when a rest finishes while this screen is showing.
+    LaunchedEffect(finished, isTop) {
+        if (finished && isTop) repeat(6) { flash.animateTo(1f, tween(350)); flash.animateTo(0f, tween(350)) } else flash.snapTo(0f)
+    }
 
-    fun start(secs: Int) { stopBuzz(context); finished = false; total = secs; left = secs; endAt = System.currentTimeMillis() + secs * 1000L }
-    fun reset() { stopBuzz(context); finished = false; endAt = null; left = total }
-    val running = endAt != null
+    val left = if (endAt != null) maxOf(0, Math.ceil((endAt - now) / 1000.0).toInt()) else if (finished) 0 else total
+    fun begin(secs: Int) { RestTimer.start(app, secs) }
+    fun start(secs: Int) {
+        if (RestNotice.shouldAsk(context)) {
+            RestNotice.markAsked(context)
+            app.ask(
+                "Alert when rest is over?",
+                "Spot can show a notification with the time left, and tell you when your rest ends, even if Spot is closed or your phone is locked. It stays on your phone. The next screen is Android asking for permission. You can say no and the timer still works while Spot is open.",
+                "Continue",
+            ) { PhoneSync.requestPermission?.invoke(); begin(secs) }
+            return
+        }
+        begin(secs)
+    }
+    fun reset() { RestTimer.stop(context) }
     val customSecs = if (Regex("^\\d{1,3}$").matches(custom.trim())) custom.trim().toInt() else null
     val customOk = customSecs != null && customSecs in 5..600
     val bg = lerp(c.card, c.accent, flash.value)
@@ -376,6 +372,17 @@ fun TimerScreen() {
         }
         Text("Custom runs from 5 to 600 seconds.", color = c.muted, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
         if (running || finished) Row(Modifier.padding(top = 22.dp)) { BigBtn(if (finished) "Done" else "Stop", { reset() }, secondary = true) }
-        Text("It buzzes and flashes when time is up, as long as Spot is open. Spot does not send reminders when it is closed.", color = c.muted, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 22.dp, bottom = 24.dp))
+        Text(
+            if (notifOn) "The timer keeps running when you leave this screen or close Spot, and shows in a notification with the time left. When rest is over Spot buzzes and the notification tells you."
+            else "The timer keeps running when you leave this screen. Spot buzzes and flashes when time is up if it is open. Notifications are off for Spot, so there is no alert when it is closed.",
+            color = c.muted, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 22.dp, bottom = if (notifOn) 24.dp else 8.dp),
+        )
+        if (!notifOn) Row(Modifier.padding(bottom = 24.dp)) {
+            BigBtn("Turn on notifications", {
+                try {
+                    context.startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: Exception) { app.fail(e) }
+            }, secondary = true)
+        }
     }
 }

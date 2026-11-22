@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
         when (host) {
             "prs" -> if (seg.isEmpty()) app.tab(Route.Prs)
             "log" -> if (seg.isEmpty()) app.tab(Route.Log)
+            "timer" -> if (seg.isEmpty()) app.tab(Route.Timer)
             "workout" -> {
                 if (seg.size == 1 && seg[0] == "new") { app.tab(Route.Home); app.go(Route.WorkoutNew) }
                 else if (seg.size == 1) {
@@ -97,7 +98,8 @@ fun SpotApp(app: AppState, activity: MainActivity) {
             else if (app.settings["onboarded"] != "1") app.go(Route.Welcome)
         }
     }
-    BackHandler(enabled = app.stack.size > 1) { app.back() }
+    // Back goes up one screen. On another tab it goes to Home first; only on Home does it leave the app.
+    BackHandler(enabled = app.stack.size > 1 || app.current != Route.Home) { if (app.stack.size > 1) app.back() else app.home() }
 
     CompositionLocalProvider(LocalApp provides app, LocalColors provides colors) {
         Box(Modifier.fillMaxSize().background(colors.bg)) {

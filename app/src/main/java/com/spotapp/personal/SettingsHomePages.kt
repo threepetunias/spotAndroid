@@ -58,7 +58,7 @@ fun HomeCardsPage() {
                             Text(info.sub, color = c.muted, fontSize = 15.sp, modifier = Modifier.padding(top = 2.dp))
                         }
                         Chip(if (on) "On" else "Off", on, { app.setSetting(info.onKey, if (on) "off" else "on") })
-                        grip()
+                        grip(false)
                     }
                 }
             }

@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,9 +35,27 @@ import androidx.compose.ui.unit.dp
 // Rows stay in normal layout; the held row follows the finger and the others slide out of the way.
 // People using TalkBack move a row with the grip's custom actions ("Move up", "Move down") instead of dragging.
 
+// compact = a quiet "⋮⋮" handle that is always showing (like Tend's goals); otherwise a button-sized grip.
 @Composable
-fun Grip(label: String, active: Boolean, onMove: (Int) -> Boolean, modifier: Modifier = Modifier) {
+fun Grip(label: String, active: Boolean, onMove: (Int) -> Boolean, modifier: Modifier = Modifier, compact: Boolean = false) {
     val c = colors()
+    if (compact) {
+        Box(
+            modifier
+                .size(width = 40.dp, height = 48.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (active) c.accent else Color.Transparent)
+                .semantics {
+                    contentDescription = "$label. Press and hold, then drag, or use the actions to move it."
+                    customActions = listOf(
+                        CustomAccessibilityAction("Move up") { onMove(-1) },
+                        CustomAccessibilityAction("Move down") { onMove(1) },
+                    )
+                },
+            contentAlignment = Alignment.Center,
+        ) { Text("⋮⋮", color = if (active) c.onAccent else c.muted, fontSize = 20.sp) }
+        return
+    }
     Column(
         modifier
             .size(44.dp)
@@ -58,7 +79,7 @@ fun Grip(label: String, active: Boolean, onMove: (Int) -> Boolean, modifier: Mod
 fun <T> DragList(
     items: List<T>, keyOf: (T) -> String, gap: Int = 8,
     onReorder: (List<String>) -> Unit, onDragging: (Boolean) -> Unit = {},
-    row: @Composable (item: T, index: Int, grip: @Composable () -> Unit) -> Unit,
+    row: @Composable (item: T, index: Int, grip: @Composable (compact: Boolean) -> Unit) -> Unit,
 ) {
     val keys = items.map(keyOf)
     val sizes = remember { HashMap<String, Int>() }
@@ -92,9 +113,11 @@ fun <T> DragList(
                     .graphicsLayer { translationY = if (held) dy else shift; alpha = if (held) 0.95f else 1f }
                     .then(if (held) Modifier.shadow(6.dp, RoundedCornerShape(18.dp)) else Modifier),
             ) {
-                row(item, i) {
+                row(item, i) { compact ->
                     Grip(
-                        "Reorder handle ${i + 1} of ${items.size}", held,
+                        compact = compact,
+                        label = "Reorder handle ${i + 1} of ${items.size}",
+                        active = held,
                         onMove = { by ->
                             val next = moveKey(liveKeys, i, by)
                             if (next != null) { liveReorder(next); true } else false
